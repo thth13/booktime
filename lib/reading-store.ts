@@ -337,3 +337,120 @@ export async function addBook(input: {
 
   return getDashboard(input.accountIdentifier);
 }
+
+export async function markBookFinished(input: {
+  accountIdentifier: string;
+  bookId: string;
+  finishedAt: string;
+}): Promise<DashboardView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const bookId = asObjectId(input.bookId);
+  const finishedAt = new Date(input.finishedAt);
+
+  if (Number.isNaN(finishedAt.getTime())) {
+    throw new Error("Invalid finish timestamp.");
+  }
+
+  const book = await db.collection<BookDoc>("books").findOne({ _id: bookId, accountId: account._id });
+  if (!book) {
+    throw new Error("Book was not found.");
+  }
+
+  const now = new Date();
+  const activeSession = await db.collection<SessionDoc>("reading_sessions").findOne(
+    {
+      accountId: account._id,
+      bookId,
+      endedAt: null,
+    },
+    { sort: { startedAt: -1 } },
+  );
+
+  const updates: Partial<Pick<BookDoc, "status" | "progress" | "updatedAt">> & {
+    totalSeconds?: number;
+    sessionsCount?: number;
+  } = {
+    status: "finished",
+    progress: 100,
+    updatedAt: now,
+  };
+
+  if (activeSession) {
+    const endedAt = finishedAt > activeSession.startedAt ? finishedAt : now;
+    const durationSeconds = secondsBetween(activeSession.startedAt, endedAt);
+
+    await db.collection<SessionDoc>("reading_sessions").updateOne(
+      { _id: activeSession._id, accountId: account._id, endedAt: null },
+      {
+        $set: {
+          endedAt,
+          durationSeconds,
+          updatedAt: now,
+        },
+      },
+    );
+
+    updates.totalSeconds = book.totalSeconds + durationSeconds;
+    updates.sessionsCount = book.sessionsCount + 1;
+  }
+
+  await db.collection<BookDoc>("books").updateOne(
+    { _id: bookId, accountId: account._id },
+    {
+      $set: updates,
+    },
+  );
+
+  return getDashboard(input.accountIdentifier);
+}
+
+export async function markBookReading(input: {
+  accountIdentifier: string;
+  bookId: string;
+}): Promise<DashboardView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const bookId = asObjectId(input.bookId);
+
+  const result = await db.collection<BookDoc>("books").updateOne(
+    { _id: bookId, accountId: account._id },
+    {
+      $set: {
+        status: "reading",
+        progress: 0,
+        updatedAt: new Date(),
+      },
+    },
+  );
+
+  if (!result.matchedCount) {
+    throw new Error("Book was not found.");
+  }
+
+  return getDashboard(input.accountIdentifier);
+}
+
+export async function deleteBook(input: {
+  accountIdentifier: string;
+  bookId: string;
+}): Promise<DashboardView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const bookId = asObjectId(input.bookId);
+
+  const result = await db.collection<BookDoc>("books").deleteOne({ _id: bookId, accountId: account._id });
+  if (!result.deletedCount) {
+    throw new Error("Book was not found.");
+  }
+
+  await db.collection<SessionDoc>("reading_sessions").deleteMany({ accountId: account._id, bookId });
+
+  return getDashboard(input.accountIdentifier);
+}

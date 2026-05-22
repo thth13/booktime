@@ -245,7 +245,8 @@ button {
 }
 
 .btn-primary,
-.btn-secondary {
+.btn-secondary,
+.btn-danger {
   min-height: 42px;
   padding: 10px 18px;
   border-radius: 100px;
@@ -280,8 +281,21 @@ button {
   color: var(--amber);
 }
 
+.btn-danger {
+  background: #9D3434;
+  border: 1.5px solid #9D3434;
+  color: #FFF8F2;
+  box-shadow: 0 2px 8px rgba(157,52,52,0.22), 0 1px 2px rgba(157,52,52,0.16);
+}
+
+.btn-danger:hover {
+  background: #872A2A;
+  border-color: #872A2A;
+}
+
 .btn-primary:disabled,
 .btn-secondary:disabled,
+.btn-danger:disabled,
 .auth-input:disabled {
   cursor: wait;
   opacity: 0.7;
@@ -300,6 +314,43 @@ button {
 
 .add-book-modal {
   width: min(520px, 100%);
+}
+
+.confirm-modal {
+  width: min(420px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.confirm-modal h2 {
+  font-family: 'Lora', serif;
+  font-size: 21px;
+  font-weight: 500;
+  color: var(--coffee);
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.confirm-modal p {
+  margin-top: 8px;
+  color: var(--coffee-mid);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.confirm-modal p span {
+  color: var(--coffee);
+  font-weight: 600;
+}
+
+.confirm-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .add-book-form {
@@ -331,6 +382,18 @@ button {
   color: #9D3434;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.book-action-error {
+  color: #9D3434;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.inline-action-error {
+  max-width: 760px;
+  margin: 12px auto 0;
+  padding: 0 24px;
 }
 
 .stats-row {
@@ -392,6 +455,74 @@ button {
   margin-top: 12px;
 }
 
+.book-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  touch-action: pan-y;
+}
+
+.book-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  width: var(--action-width);
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: #EFE7DC;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(100%);
+}
+
+.book-actions.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.book-action-btn {
+  width: 92px;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #FFF8F2;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  transition: filter 0.18s ease, opacity 0.18s ease;
+}
+
+.book-action-btn:hover {
+  filter: brightness(0.96);
+}
+
+.book-action-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.action-finished {
+  background: #53784B;
+}
+
+.action-reading {
+  background: var(--amber-btn);
+}
+
+.action-delete {
+  background: #9D3434;
+}
+
 .book-card {
   background: var(--card);
   border: 1px solid var(--border-light);
@@ -405,10 +536,23 @@ button {
   cursor: default;
 }
 
+.swipe-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  transform: translateX(var(--swipe-offset));
+  touch-action: pan-y;
+  user-select: none;
+}
+
 .book-card:hover {
   box-shadow: var(--shadow-md);
   border-color: var(--border);
   transform: translateY(-1px);
+}
+
+.swipe-card:hover {
+  transform: translateX(var(--swipe-offset));
 }
 
 .book-card.active-card {
@@ -551,6 +695,12 @@ button {
 }
 
 .btn-start:active { transform: translateY(0); }
+
+.btn-start:disabled {
+  cursor: wait;
+  opacity: 0.7;
+  transform: none;
+}
 
 .btn-start svg { flex-shrink: 0; }
 
@@ -821,6 +971,10 @@ button {
   .add-book-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+  .confirm-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
   }
   .stats-row {
     margin-top: 18px;

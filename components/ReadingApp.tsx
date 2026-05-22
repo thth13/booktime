@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type FormEvent, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActiveSessionView, BookView, DashboardView, OfflineEvent } from "@/lib/types";
 
 type LocalActive = {
@@ -125,9 +125,59 @@ function plusIcon() {
   );
 }
 
+function checkIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+      <path d="M3 7.6L6.1 10.5L12 4.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function trashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+      <path d="M3 4h9M6 4V2.8h3V4M5 6v5M10 6v5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M4 4l.6 8.2c.1.7.6 1.1 1.3 1.1h3.2c.7 0 1.2-.4 1.3-1.1L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function returnIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+      <path d="M5.2 4.2H10a3 3 0 0 1 0 6H4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.2 1.9L2.9 4.2l2.3 2.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 async function postJson(url: string, body: unknown, accountIdentifier: string): Promise<DashboardView> {
   const response = await fetch(url, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-booktime-account": accountIdentifier,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const payload = (await response.json()) as DashboardView | { error?: string };
+
+  if (!response.ok) {
+    throw new Error("error" in payload && payload.error ? payload.error : "Request failed.");
+  }
+
+  return payload as DashboardView;
+}
+
+async function mutateJson(
+  url: string,
+  method: "PATCH" | "DELETE",
+  body: unknown,
+  accountIdentifier: string,
+): Promise<DashboardView> {
+  const response = await fetch(url, {
+    method,
     headers: {
       "Content-Type": "application/json",
       "x-booktime-account": accountIdentifier,
@@ -181,6 +231,10 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const [newBookAuthor, setNewBookAuthor] = useState("");
   const [addBookError, setAddBookError] = useState<string | null>(null);
   const [addBookBusy, setAddBookBusy] = useState(false);
+  const [openActionBookId, setOpenActionBookId] = useState<string | null>(null);
+  const [pendingDeleteBook, setPendingDeleteBook] = useState<BookView | null>(null);
+  const [bookActionError, setBookActionError] = useState<string | null>(null);
+  const [bookActionBusy, setBookActionBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const flushInProgress = useRef(false);
   const accountIdentifier = auth.status === "signedIn" ? auth.identifier : null;
@@ -552,6 +606,114 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     }
   }
 
+  function clearQueuedEventsForBook(bookId: string) {
+    if (!accountIdentifier) {
+      return;
+    }
+
+    const queueKey = getEventQueueKey(accountIdentifier);
+    const queue = readJson<OfflineEvent[]>(queueKey, []);
+    writeJson(
+      queueKey,
+      queue.filter((event) => event.bookId !== bookId),
+    );
+
+    const activeKey = getActiveKey(accountIdentifier);
+    const active = readJson<LocalActive | null>(activeKey, null);
+    if (active?.bookId === bookId) {
+      window.localStorage.removeItem(activeKey);
+      setLocalActive(null);
+    }
+  }
+
+  async function markBookFinished(bookId: string) {
+    if (!accountIdentifier) {
+      return;
+    }
+
+    setBookActionBusy(true);
+    setBookActionError(null);
+
+    try {
+      const finishedAt = new Date().toISOString();
+
+      if (activeSession?.bookId === bookId) {
+        appendEvent({
+          eventId: makeEventId(),
+          type: "stop",
+          bookId,
+          occurredAt: finishedAt,
+        });
+        window.localStorage.removeItem(getActiveKey(accountIdentifier));
+        setLocalActive(null);
+        optimisticallyStopCurrent(finishedAt);
+      }
+
+      await flushQueue();
+      const nextDashboard = await mutateJson(
+        "/api/books",
+        "PATCH",
+        { bookId, status: "finished", finishedAt },
+        accountIdentifier,
+      );
+
+      const activeKey = getActiveKey(accountIdentifier);
+      const active = readJson<LocalActive | null>(activeKey, null);
+      if (active?.bookId === bookId) {
+        window.localStorage.removeItem(activeKey);
+        setLocalActive(null);
+      }
+
+      applyDashboard(nextDashboard);
+      setOpenActionBookId(null);
+    } catch (error) {
+      setBookActionError(error instanceof Error ? error.message : "Failed to update book.");
+    } finally {
+      setBookActionBusy(false);
+    }
+  }
+
+  async function markBookReading(bookId: string) {
+    if (!accountIdentifier) {
+      return;
+    }
+
+    setBookActionBusy(true);
+    setBookActionError(null);
+
+    try {
+      const nextDashboard = await mutateJson("/api/books", "PATCH", { bookId, status: "reading" }, accountIdentifier);
+      applyDashboard(nextDashboard);
+      setOpenActionBookId(null);
+    } catch (error) {
+      setBookActionError(error instanceof Error ? error.message : "Failed to update book.");
+    } finally {
+      setBookActionBusy(false);
+    }
+  }
+
+  async function confirmDeleteBook() {
+    if (!accountIdentifier || !pendingDeleteBook) {
+      return;
+    }
+
+    const bookId = pendingDeleteBook.id;
+    setBookActionBusy(true);
+    setBookActionError(null);
+
+    try {
+      const nextDashboard = await mutateJson("/api/books", "DELETE", { bookId }, accountIdentifier);
+      clearQueuedEventsForBook(bookId);
+      applyDashboard(nextDashboard);
+      setPendingDeleteBook(null);
+      setOpenActionBookId(null);
+    } catch (error) {
+      setBookActionError(error instanceof Error ? error.message : "Failed to delete book.");
+    } finally {
+      setBookActionBusy(false);
+    }
+  }
+
   const readingBooks = books.filter((book) => book.status === "reading");
   const finishedBooks = books.filter((book) => book.status === "finished");
 
@@ -712,6 +874,41 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
         </div>
       ) : null}
 
+      {pendingDeleteBook ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!bookActionBusy) {
+              setPendingDeleteBook(null);
+              setBookActionError(null);
+            }
+          }}
+        >
+          <section
+            className="confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-book-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="delete-book-title">Delete book?</h2>
+            <p>
+              This will remove <span>{pendingDeleteBook.title}</span> and its reading sessions.
+            </p>
+            {bookActionError ? <p className="book-action-error">{bookActionError}</p> : null}
+            <div className="confirm-actions">
+              <button className="btn-secondary" type="button" onClick={() => setPendingDeleteBook(null)} disabled={bookActionBusy}>
+                Cancel
+              </button>
+              <button className="btn-danger" type="button" onClick={confirmDeleteBook} disabled={bookActionBusy}>
+                Delete
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <section className="stats-row" aria-label="Reading summary">
         <div className="stat-item stat-time">
           <span className="stat-kicker">Total this week</span>
@@ -725,10 +922,26 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
         </div>
       </section>
 
+      {bookActionError && !pendingDeleteBook ? <p className="book-action-error inline-action-error">{bookActionError}</p> : null}
+
       <p className="section-label">Currently reading</p>
       <div className="book-list">
         {readingBooks.map((book) => (
-          <BookCard key={book.id} book={book} onStart={() => startBook(book.id)} />
+          <BookCard
+            key={book.id}
+            book={book}
+            onStart={() => startBook(book.id)}
+            onMarkFinished={() => markBookFinished(book.id)}
+            onMarkReading={() => markBookReading(book.id)}
+            onDeleteRequest={() => {
+              setPendingDeleteBook(book);
+              setBookActionError(null);
+            }}
+            isActionsOpen={openActionBookId === book.id}
+            onActionsOpen={() => setOpenActionBookId(book.id)}
+            onActionsClose={() => setOpenActionBookId(null)}
+            actionsDisabled={bookActionBusy}
+          />
         ))}
       </div>
 
@@ -742,7 +955,22 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
 
           <div className="book-list finished-list">
             {finishedBooks.map((book) => (
-              <BookCard key={book.id} book={book} onStart={() => startBook(book.id)} reread />
+              <BookCard
+                key={book.id}
+                book={book}
+                onStart={() => startBook(book.id)}
+                onMarkFinished={() => markBookFinished(book.id)}
+                onMarkReading={() => markBookReading(book.id)}
+                onDeleteRequest={() => {
+                  setPendingDeleteBook(book);
+                  setBookActionError(null);
+                }}
+                isActionsOpen={openActionBookId === book.id}
+                onActionsOpen={() => setOpenActionBookId(book.id)}
+                onActionsClose={() => setOpenActionBookId(null)}
+                actionsDisabled={bookActionBusy}
+                reread
+              />
             ))}
           </div>
         </>
@@ -779,44 +1007,166 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
 function BookCard({
   book,
   onStart,
+  onMarkFinished,
+  onMarkReading,
+  onDeleteRequest,
+  isActionsOpen,
+  onActionsOpen,
+  onActionsClose,
+  actionsDisabled,
   reread = false,
 }: {
   book: BookView & { displaySeconds: number };
   onStart: () => void;
+  onMarkFinished: () => void;
+  onMarkReading: () => void;
+  onDeleteRequest: () => void;
+  isActionsOpen: boolean;
+  onActionsOpen: () => void;
+  onActionsClose: () => void;
+  actionsDisabled: boolean;
   reread?: boolean;
 }) {
+  const actionWidth = 184;
+  const [dragOffset, setDragOffset] = useState<number | null>(null);
+  const gesture = useRef<{ startX: number; startY: number; dragging: boolean } | null>(null);
+  const offset = dragOffset ?? (isActionsOpen ? -actionWidth : 0);
+  const areActionsVisible = isActionsOpen || dragOffset !== null;
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (actionsDisabled) {
+      return;
+    }
+
+    gesture.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const current = gesture.current;
+    if (!current) {
+      return;
+    }
+
+    const deltaX = event.clientX - current.startX;
+    const deltaY = event.clientY - current.startY;
+
+    if (!current.dragging && Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) {
+      return;
+    }
+
+    if (!current.dragging && Math.abs(deltaY) > Math.abs(deltaX)) {
+      gesture.current = null;
+      setDragOffset(null);
+      return;
+    }
+
+    current.dragging = true;
+    const baseOffset = isActionsOpen ? -actionWidth : 0;
+    const nextOffset = Math.min(0, Math.max(-actionWidth, baseOffset + deltaX));
+    setDragOffset(nextOffset);
+  }
+
+  function handlePointerEnd() {
+    const shouldOpen = offset < -actionWidth / 2;
+    gesture.current = null;
+    setDragOffset(null);
+
+    if (shouldOpen) {
+      onActionsOpen();
+    } else {
+      onActionsClose();
+    }
+  }
+
+  const swipeStyle = { "--swipe-offset": `${offset}px` } as CSSProperties;
+
   return (
-    <div className={`book-card${book.isActive ? " active-card" : ""}${book.status === "finished" ? " finished-card" : ""}`}>
-      <div className={`book-cover ${book.coverClass}`}>
-        <div className="cover-line" />
-        <div className="cover-line" />
-      </div>
-      <div className="book-info">
-        <div className="book-title">{book.title}</div>
-        <div className="book-author">{book.author}</div>
-        {book.isActive ? (
-          <div className="active-badge">
-            <span className="pulse-dot" />
-            Reading now
-          </div>
+    <div className="book-row" style={{ "--action-width": `${actionWidth}px` } as CSSProperties}>
+      <div className={`book-actions${areActionsVisible ? " visible" : ""}`} aria-hidden={!areActionsVisible}>
+        {book.status !== "finished" ? (
+          <button
+            className="book-action-btn action-finished"
+            type="button"
+            onClick={onMarkFinished}
+            disabled={actionsDisabled}
+            tabIndex={isActionsOpen ? 0 : -1}
+          >
+            {checkIcon()}
+            Read
+          </button>
         ) : (
-          <div className="book-sessions">
-            {book.status === "finished" ? "Finished · " : ""}
-            {book.sessionsCount} sessions
-          </div>
+          <button
+            className="book-action-btn action-reading"
+            type="button"
+            onClick={onMarkReading}
+            disabled={actionsDisabled}
+            tabIndex={isActionsOpen ? 0 : -1}
+          >
+            {returnIcon()}
+            Unread
+          </button>
         )}
+        <button
+          className="book-action-btn action-delete"
+          type="button"
+          onClick={onDeleteRequest}
+          disabled={actionsDisabled}
+          tabIndex={isActionsOpen ? 0 : -1}
+        >
+          {trashIcon()}
+          Delete
+        </button>
       </div>
-      <div className="book-time-wrap">
-        <div className="book-time">{formatShortTime(book.displaySeconds)}</div>
-        <div className="book-time-label">total time</div>
-        <div className="progress-wrap">
-          <div className="progress-bar" style={{ width: `${book.progress}%` }} />
+
+      <div
+        className={`book-card swipe-card${book.isActive ? " active-card" : ""}${book.status === "finished" ? " finished-card" : ""}`}
+        style={swipeStyle}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
+        <div className={`book-cover ${book.coverClass}`}>
+          <div className="cover-line" />
+          <div className="cover-line" />
         </div>
+        <div className="book-info">
+          <div className="book-title">{book.title}</div>
+          <div className="book-author">{book.author}</div>
+          {book.isActive ? (
+            <div className="active-badge">
+              <span className="pulse-dot" />
+              Reading now
+            </div>
+          ) : (
+            <div className="book-sessions">
+              {book.status === "finished" ? "Finished · " : ""}
+              {book.sessionsCount} sessions
+            </div>
+          )}
+        </div>
+        <div className="book-time-wrap">
+          <div className="book-time">{formatShortTime(book.displaySeconds)}</div>
+          <div className="book-time-label">total time</div>
+          <div className="progress-wrap">
+            <div className="progress-bar" style={{ width: `${book.progress}%` }} />
+          </div>
+        </div>
+        <button
+          className={`btn-start${book.isActive ? " reading" : ""}${reread ? " reread" : ""}`}
+          type="button"
+          onClick={onStart}
+          disabled={actionsDisabled}
+        >
+          {book.isActive ? pauseIcon() : playIcon()}
+          {book.isActive ? "Reading" : reread ? "Re-read" : "Start"}
+        </button>
       </div>
-      <button className={`btn-start${book.isActive ? " reading" : ""}${reread ? " reread" : ""}`} type="button" onClick={onStart}>
-        {book.isActive ? pauseIcon() : playIcon()}
-        {book.isActive ? "Reading" : reread ? "Re-read" : "Start"}
-      </button>
     </div>
   );
 }
