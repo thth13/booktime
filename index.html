@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folio — Reading Time Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cream:        #F5F0E8;
+    --cream-dark:   #EDE7D9;
+    --card:         #FAF7F2;
+    --card-hover:   #F7F3EC;
+    --border:       #E2D9CC;
+    --border-light: #EDE7DC;
+    --coffee:       #2C1F0F;
+    --coffee-mid:   #5C4A35;
+    --coffee-light: #8C7560;
+    --amber:        #A0622A;
+    --amber-light:  #C47E45;
+    --amber-pale:   #F5E8D8;
+    --amber-btn:    #B36B2E;
+    --text-muted:   #9A8A78;
+    --shadow-sm:    0 1px 3px rgba(44,31,15,0.06), 0 1px 2px rgba(44,31,15,0.04);
+    --shadow-md:    0 4px 16px rgba(44,31,15,0.08), 0 2px 6px rgba(44,31,15,0.05);
+    --shadow-lg:    0 8px 32px rgba(44,31,15,0.12), 0 4px 12px rgba(44,31,15,0.08);
+    --radius:       14px;
+    --radius-sm:    8px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background-color: var(--cream);
+    color: var(--coffee);
+    min-height: 100vh;
+    padding-bottom: 120px;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(194,154,108,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(160,98,42,0.06) 0%, transparent 60%);
+  }
+
+  /* ── Header ── */
+  .header {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    width: 32px;
+    height: 32px;
+    background: var(--amber);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .logo-mark::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    width: 18px;
+    height: 18px;
+    background: rgba(255,255,255,0.25);
+    border-radius: 2px;
+    transform: rotate(-5deg);
+  }
+
+  .logo-mark::after {
+    content: '';
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    width: 14px;
+    height: 14px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 2px;
+    transform: rotate(5deg);
+  }
+
+  .logo-text {
+    font-family: 'Lora', serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--coffee);
+    letter-spacing: -0.3px;
+  }
+
+  .btn-add {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1.5px solid var(--border);
+    border-radius: 100px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--coffee-mid);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .btn-add:hover {
+    background: var(--card);
+    border-color: var(--amber-light);
+    color: var(--amber);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .btn-add svg { flex-shrink: 0; }
+
+  /* ── Reading summary ── */
+  .stats-row {
+    max-width: 760px;
+    margin: 20px auto 0;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+
+  .stat-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .stat-kicker {
+    font-size: 11.5px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-muted);
+  }
+
+  .stat-value {
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--coffee-mid);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-label { display: none; }
+
+  /* ── Section label ── */
+  .section-label {
+    max-width: 760px;
+    margin: 32px auto 0;
+    padding: 0 24px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* ── Book list ── */
+  .book-list {
+    max-width: 760px;
+    margin: 12px auto 0;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* ── Book card ── */
+  .book-card {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+    cursor: default;
+  }
+
+  .book-card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border);
+    transform: translateY(-1px);
+  }
+
+  .book-card.active-card {
+    border-color: rgba(160,98,42,0.25);
+    background: #FEFAF5;
+    box-shadow: 0 4px 16px rgba(160,98,42,0.10), 0 0 0 3px rgba(160,98,42,0.06);
+  }
+
+  /* ── Book cover ── */
+  .book-cover {
+    width: 46px;
+    height: 62px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 2px 2px 8px rgba(44,31,15,0.18), inset -2px 0 4px rgba(44,31,15,0.15);
+  }
+
+  .book-cover::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 4px;
+    height: 100%;
+    background: rgba(0,0,0,0.12);
+  }
+
+  .cover-1 { background: linear-gradient(145deg, #6B4E3D 0%, #3D2B1F 100%); }
+  .cover-2 { background: linear-gradient(145deg, #4A6741 0%, #2D3E2B 100%); }
+  .cover-3 { background: linear-gradient(145deg, #5A4A7A 0%, #3A2C58 100%); }
+  .cover-4 { background: linear-gradient(145deg, #7A5C38 0%, #4E3A22 100%); }
+
+  .cover-line {
+    position: absolute;
+    top: 10px;
+    left: 8px;
+    right: 6px;
+    height: 2px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 1px;
+  }
+  .cover-line + .cover-line { top: 16px; width: 55%; background: rgba(255,255,255,0.12); }
+
+  /* ── Book info ── */
+  .book-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .book-title {
+    font-family: 'Lora', serif;
+    font-size: 15.5px;
+    font-weight: 500;
+    color: var(--coffee);
+    letter-spacing: -0.2px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .book-author {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ── Time display ── */
+  .book-time-wrap {
+    text-align: right;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .book-time {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--coffee-mid);
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .book-time-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  .book-sessions {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+
+  /* ── Progress bar ── */
+  .progress-wrap {
+    margin-top: 5px;
+    height: 3px;
+    background: var(--border-light);
+    border-radius: 100px;
+    overflow: hidden;
+    width: 80px;
+    margin-left: auto;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--amber-light);
+    border-radius: 100px;
+    transition: width 0.4s ease;
+  }
+
+  /* ── Start button ── */
+  .btn-start {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 20px;
+    background: var(--amber-btn);
+    color: #FFF8F2;
+    border: none;
+    border-radius: 100px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(160,98,42,0.30), 0 1px 2px rgba(160,98,42,0.20);
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+
+  .btn-start:hover {
+    background: var(--amber);
+    box-shadow: 0 4px 14px rgba(160,98,42,0.38), 0 2px 4px rgba(160,98,42,0.22);
+    transform: translateY(-1px);
+  }
+
+  .btn-start:active { transform: translateY(0); }
+
+  .btn-start svg { flex-shrink: 0; }
+
+  .btn-start.reading {
+    background: var(--amber-pale);
+    color: var(--amber);
+    box-shadow: none;
+    border: 1.5px solid rgba(160,98,42,0.18);
+  }
+
+  /* ── Active badge ── */
+  .active-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--amber-pale);
+    color: var(--amber);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 100px;
+    margin-top: 5px;
+    letter-spacing: 0.02em;
+  }
+
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--amber-light);
+    border-radius: 50%;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.75); }
+  }
+
+  /* ── Floating bottom panel ── */
+  .player-panel {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(640px, calc(100vw - 32px));
+    background: var(--coffee);
+    border-radius: 20px;
+    padding: 0;
+    box-shadow:
+      0 20px 60px rgba(44,31,15,0.30),
+      0 8px 24px rgba(44,31,15,0.20),
+      0 0 0 1px rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow: hidden;
+    animation: slideUp 0.4s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateX(-50%) translateY(30px); opacity: 0; }
+    to   { transform: translateX(-50%) translateY(0);   opacity: 1; }
+  }
+
+  .player-cover {
+    width: 56px;
+    height: 100%;
+    min-height: 72px;
+    flex-shrink: 0;
+    background: linear-gradient(145deg, #6B4E3D 0%, #3D2B1F 100%);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .player-cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.2);
+  }
+
+  .player-cover-icon {
+    position: relative;
+    z-index: 1;
+    opacity: 0.6;
+  }
+
+  .player-body {
+    flex: 1;
+    min-width: 0;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .player-book-title {
+    font-family: 'Lora', serif;
+    font-size: 14.5px;
+    color: #FFF8F2;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.2px;
+  }
+
+  .player-timer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .player-timer {
+    font-size: 22px;
+    font-weight: 300;
+    color: #FFF8F2;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  /* Progress bar in player */
+  .player-progress {
+    height: 2px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 100px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+
+  .player-progress-fill {
+    height: 100%;
+    width: 38%;
+    background: linear-gradient(90deg, rgba(196,126,69,0.7), rgba(196,126,69,0.9));
+    border-radius: 100px;
+    animation: progressGrow 0.4s ease both 0.5s;
+  }
+
+  @keyframes progressGrow {
+    from { width: 0; }
+    to   { width: 38%; }
+  }
+
+  .player-controls {
+    flex-shrink: 0;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn-stop {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 20px;
+    background: rgba(255,255,255,0.1);
+    color: #FFF8F2;
+    border: 1.5px solid rgba(255,255,255,0.15);
+    border-radius: 100px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+
+  .btn-stop:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: rgba(255,255,255,0.25);
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    max-width: 760px;
+    margin: 48px auto 0;
+    padding: 0 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Divider ── */
+  .divider {
+    max-width: 760px;
+    margin: 28px auto 0;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .divider-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border-light);
+  }
+
+  .divider-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 560px) {
+    .header { padding: 24px 16px 0; }
+    .stats-row {
+      margin-top: 18px;
+      padding: 0 16px;
+      gap: 10px 16px;
+    }
+    .section-label { padding: 0 16px; }
+    .book-list { padding: 0 16px; }
+    .book-card { padding: 14px 14px; gap: 12px; }
+    .book-title { font-size: 14px; }
+    .btn-start { padding: 9px 15px; font-size: 13px; }
+    .player-panel { bottom: 12px; }
+    .book-time-wrap { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark"></div>
+    <span class="logo-text">Folio</span>
+  </div>
+  <button class="btn-add">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </svg>
+    Add book
+  </button>
+</header>
+
+<!-- ── Reading summary ── -->
+<section class="stats-row" aria-label="Reading summary">
+  <div class="stat-item stat-time">
+    <span class="stat-kicker">Total this week</span>
+    <span class="stat-value">4h 32m</span>
+    <span class="stat-label">reading time</span>
+  </div>
+  <div class="stat-item stat-books">
+    <span class="stat-kicker">Books in progress</span>
+    <span class="stat-value">3</span>
+    <span class="stat-label">active books</span>
+  </div>
+</section>
+
+<!-- ── Currently reading section ── -->
+<p class="section-label">Currently reading</p>
+
+<div class="book-list">
+
+  <!-- Book 1 — active/reading state -->
+  <div class="book-card active-card">
+    <div class="book-cover cover-1">
+      <div class="cover-line"></div>
+      <div class="cover-line"></div>
+    </div>
+    <div class="book-info">
+      <div class="book-title">The Master and Margarita</div>
+      <div class="book-author">Mikhail Bulgakov</div>
+      <div class="active-badge">
+        <span class="pulse-dot"></span>
+        Reading now
+      </div>
+    </div>
+    <div class="book-time-wrap">
+      <div class="book-time">5h 48m</div>
+      <div class="book-time-label">total time</div>
+      <div class="progress-wrap">
+        <div class="progress-bar" style="width: 65%;"></div>
+      </div>
+    </div>
+    <button class="btn-start reading">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <rect x="2" y="2" width="3" height="8" rx="1" fill="currentColor"/>
+        <rect x="7" y="2" width="3" height="8" rx="1" fill="currentColor"/>
+      </svg>
+      Reading
+    </button>
+  </div>
+
+  <!-- Book 2 -->
+  <div class="book-card">
+    <div class="book-cover cover-2">
+      <div class="cover-line"></div>
+      <div class="cover-line"></div>
+    </div>
+    <div class="book-info">
+      <div class="book-title">Flowers for Algernon</div>
+      <div class="book-author">Daniel Keyes</div>
+      <div class="book-sessions">12 sessions</div>
+    </div>
+    <div class="book-time-wrap">
+      <div class="book-time">3h 14m</div>
+      <div class="book-time-label">total time</div>
+      <div class="progress-wrap">
+        <div class="progress-bar" style="width: 40%;"></div>
+      </div>
+    </div>
+    <button class="btn-start">
+      <svg width="11" height="12" viewBox="0 0 11 12" fill="none">
+        <path d="M1.5 1.5L9.5 6L1.5 10.5V1.5Z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+      </svg>
+      Start
+    </button>
+  </div>
+
+  <!-- Book 3 -->
+  <div class="book-card">
+    <div class="book-cover cover-3">
+      <div class="cover-line"></div>
+      <div class="cover-line"></div>
+    </div>
+    <div class="book-info">
+      <div class="book-title">Meditations</div>
+      <div class="book-author">Marcus Aurelius</div>
+      <div class="book-sessions">7 sessions</div>
+    </div>
+    <div class="book-time-wrap">
+      <div class="book-time">1h 50m</div>
+      <div class="book-time-label">total time</div>
+      <div class="progress-wrap">
+        <div class="progress-bar" style="width: 22%;"></div>
+      </div>
+    </div>
+    <button class="btn-start">
+      <svg width="11" height="12" viewBox="0 0 11 12" fill="none">
+        <path d="M1.5 1.5L9.5 6L1.5 10.5V1.5Z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+      </svg>
+      Start
+    </button>
+  </div>
+
+</div>
+
+<!-- ── Divider ── -->
+<div class="divider">
+  <div class="divider-line"></div>
+  <span class="divider-text">Finished</span>
+  <div class="divider-line"></div>
+</div>
+
+<!-- ── Finished section ── -->
+<div class="book-list" style="margin-top: 12px;">
+
+  <!-- Book 4 — finished -->
+  <div class="book-card" style="opacity: 0.72;">
+    <div class="book-cover cover-4">
+      <div class="cover-line"></div>
+      <div class="cover-line"></div>
+    </div>
+    <div class="book-info">
+      <div class="book-title">Steppenwolf</div>
+      <div class="book-author">Hermann Hesse</div>
+      <div class="book-sessions">Finished · 19 sessions</div>
+    </div>
+    <div class="book-time-wrap">
+      <div class="book-time">8h 03m</div>
+      <div class="book-time-label">total time</div>
+      <div class="progress-wrap">
+        <div class="progress-bar" style="width: 100%; background: #C0A882;"></div>
+      </div>
+    </div>
+    <button class="btn-start" style="background: transparent; color: var(--text-muted); box-shadow: none; border: 1.5px solid var(--border); font-size: 13px;">
+      <svg width="11" height="12" viewBox="0 0 11 12" fill="none">
+        <path d="M1.5 1.5L9.5 6L1.5 10.5V1.5Z" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+      </svg>
+      Re-read
+    </button>
+  </div>
+
+</div>
+
+
+<!-- ── Floating player panel ── -->
+<div class="player-panel" role="status" aria-label="Reading session in progress">
+
+  <div class="player-cover" aria-hidden="true">
+    <svg class="player-cover-icon" width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <rect x="4" y="3" width="10" height="16" rx="2" stroke="rgba(255,248,242,0.7)" stroke-width="1.5"/>
+      <path d="M7 7h4M7 10h6M7 13h3" stroke="rgba(255,248,242,0.5)" stroke-width="1.3" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <div class="player-body">
+    <div class="player-book-title">The Master and Margarita</div>
+    <div class="player-timer-row">
+      <div class="player-timer">00:24:18</div>
+    </div>
+    <div class="player-progress">
+      <div class="player-progress-fill"></div>
+    </div>
+  </div>
+
+  <div class="player-controls">
+    <button class="btn-stop">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+        <rect x="1.5" y="1.5" width="8" height="8" rx="1.5" fill="currentColor"/>
+      </svg>
+      Stop
+    </button>
+  </div>
+
+</div>
+
+</body>
+</html>
