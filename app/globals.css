@@ -101,8 +101,11 @@ button {
 .btn-add {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 8px 16px;
+  width: 52px;
+  height: 52px;
+  padding: 0;
   background: transparent;
   border: 1.5px solid var(--border);
   border-radius: 100px;
@@ -113,7 +116,6 @@ button {
   cursor: pointer;
   transition: all 0.18s ease;
   text-decoration: none;
-  white-space: nowrap;
 }
 
 .btn-add:hover {
@@ -124,6 +126,20 @@ button {
 }
 
 .btn-add svg { flex-shrink: 0; }
+
+.btn-add-floating {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  z-index: 30;
+  background: var(--card);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-add-floating svg {
+  width: 18px;
+  height: 18px;
+}
 
 .header-actions {
   display: flex;
@@ -269,6 +285,52 @@ button {
 .auth-input:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  padding: 24px;
+  background: rgba(44,31,15,0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-book-modal {
+  width: min(520px, 100%);
+}
+
+.add-book-form {
+  background: var(--card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  box-shadow: var(--shadow-lg);
+}
+
+.add-book-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.add-book-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-book-error {
+  grid-column: 1 / -1;
+  color: #9D3434;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .stats-row {
@@ -716,6 +778,7 @@ button {
 
 @media (max-width: 560px) {
   .header {
+    position: relative;
     padding: 24px 16px 0;
     gap: 14px;
     align-items: flex-start;
@@ -726,14 +789,36 @@ button {
     flex-wrap: wrap;
   }
   .account-chip {
-    max-width: 100%;
-    flex: 1 1 100%;
+    position: absolute;
+    top: 24px;
+    right: 16px;
+    max-width: min(220px, calc(100vw - 32px));
+    padding: 4px 7px;
+    background: rgba(250,247,242,0.55);
+    border-color: rgba(226,217,204,0.55);
+    color: var(--text-muted);
+    font-size: 9.5px;
+    line-height: 1.1;
+    opacity: 0.78;
+    flex: 0 0 auto;
+  }
+  .btn-add-floating {
+    right: 24px;
+    bottom: 24px;
   }
   .auth-panel {
     margin-top: 52px;
     padding: 0 16px;
   }
   .auth-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .modal-backdrop {
+    padding: 16px;
+    align-items: flex-end;
+  }
+  .add-book-actions {
     align-items: stretch;
     flex-direction: column;
   }

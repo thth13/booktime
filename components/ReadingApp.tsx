@@ -176,6 +176,11 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const [authError, setAuthError] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [localActive, setLocalActive] = useState<LocalActive | null>(null);
+  const [isAddBookOpen, setIsAddBookOpen] = useState(false);
+  const [newBookTitle, setNewBookTitle] = useState("");
+  const [newBookAuthor, setNewBookAuthor] = useState("");
+  const [addBookError, setAddBookError] = useState<string | null>(null);
+  const [addBookBusy, setAddBookBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const flushInProgress = useRef(false);
   const accountIdentifier = auth.status === "signedIn" ? auth.identifier : null;
@@ -517,25 +522,33 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     void flushQueue();
   }
 
-  async function addBookFromPrompt() {
+  async function addBook(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
     if (!accountIdentifier) {
       return;
     }
 
-    const title = window.prompt("Book title");
-    if (!title) {
+    const title = newBookTitle.trim();
+    const author = newBookAuthor.trim();
+
+    if (!title || !author) {
+      setAddBookError("Title and author are required.");
       return;
     }
 
-    const author = window.prompt("Author");
-    if (!author) {
-      return;
-    }
+    setAddBookBusy(true);
+    setAddBookError(null);
 
     try {
       applyDashboard(await postJson("/api/books", { title, author }, accountIdentifier));
+      setNewBookTitle("");
+      setNewBookAuthor("");
+      setIsAddBookOpen(false);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to add book.");
+      setAddBookError(error instanceof Error ? error.message : "Failed to add book.");
+    } finally {
+      setAddBookBusy(false);
     }
   }
 
@@ -606,12 +619,98 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
           <button className="account-chip" type="button" onClick={copyIdentifier} title="Copy account ID">
             {accountIdentifier}
           </button>
-          <button className="btn-add" type="button" onClick={addBookFromPrompt}>
-            {plusIcon()}
-            Add book
-          </button>
         </div>
       </header>
+
+      {!activeBook ? (
+        <button
+          className="btn-add btn-add-floating"
+          type="button"
+          onClick={() => {
+            setIsAddBookOpen((isOpen) => !isOpen);
+            setAddBookError(null);
+          }}
+          aria-label="Add book"
+          aria-expanded={isAddBookOpen}
+          aria-controls="add-book-panel"
+        >
+          {plusIcon()}
+        </button>
+      ) : null}
+
+      {isAddBookOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!addBookBusy) {
+              setIsAddBookOpen(false);
+              setAddBookError(null);
+            }
+          }}
+        >
+          <section
+            className="add-book-modal"
+            id="add-book-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add book"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <form className="add-book-form" onSubmit={addBook}>
+              <div className="add-book-field">
+                <label className="auth-label" htmlFor="book-title">
+                  Title
+                </label>
+                <input
+                  id="book-title"
+                  className="auth-input"
+                  type="text"
+                  value={newBookTitle}
+                  onChange={(event) => setNewBookTitle(event.target.value)}
+                  disabled={addBookBusy}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </div>
+
+              <div className="add-book-field">
+                <label className="auth-label" htmlFor="book-author">
+                  Author
+                </label>
+                <input
+                  id="book-author"
+                  className="auth-input"
+                  type="text"
+                  value={newBookAuthor}
+                  onChange={(event) => setNewBookAuthor(event.target.value)}
+                  disabled={addBookBusy}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="add-book-actions">
+                <button className="btn-primary" type="submit" disabled={addBookBusy}>
+                  Add
+                </button>
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={() => {
+                    setIsAddBookOpen(false);
+                    setAddBookError(null);
+                  }}
+                  disabled={addBookBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {addBookError ? <p className="add-book-error">{addBookError}</p> : null}
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       <section className="stats-row" aria-label="Reading summary">
         <div className="stat-item stat-time">
@@ -633,17 +732,21 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
         ))}
       </div>
 
-      <div className="divider">
-        <div className="divider-line" />
-        <span className="divider-text">Finished</span>
-        <div className="divider-line" />
-      </div>
+      {finishedBooks.length > 0 ? (
+        <>
+          <div className="divider">
+            <div className="divider-line" />
+            <span className="divider-text">Finished</span>
+            <div className="divider-line" />
+          </div>
 
-      <div className="book-list finished-list">
-        {finishedBooks.map((book) => (
-          <BookCard key={book.id} book={book} onStart={() => startBook(book.id)} reread />
-        ))}
-      </div>
+          <div className="book-list finished-list">
+            {finishedBooks.map((book) => (
+              <BookCard key={book.id} book={book} onStart={() => startBook(book.id)} reread />
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {activeBook ? (
         <div className="player-panel" role="status" aria-label="Reading session in progress">
