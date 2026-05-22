@@ -9,8 +9,8 @@ type LocalActive = {
   eventId: string;
 };
 
-const EVENT_QUEUE_KEY = "folio.offlineEvents";
-const ACTIVE_KEY = "folio.activeSession";
+const EVENT_QUEUE_KEY = "booktime.offlineEvents";
+const ACTIVE_KEY = "booktime.activeSession";
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") {
@@ -140,7 +140,6 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const [dashboard, setDashboard] = useState(initialDashboard);
   const [localActive, setLocalActive] = useState<LocalActive | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [isOnline, setIsOnline] = useState(true);
   const flushInProgress = useRef(false);
 
   const appendEvent = useCallback((event: OfflineEvent) => {
@@ -162,7 +161,6 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
 
   const flushQueue = useCallback(async () => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      setIsOnline(false);
       return;
     }
 
@@ -203,9 +201,8 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
       }
 
       applyDashboard(await fetchDashboard());
-      setIsOnline(true);
     } catch {
-      setIsOnline(false);
+      // Events stay queued in localStorage and will retry on the next online event.
     } finally {
       flushInProgress.current = false;
     }
@@ -213,23 +210,18 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
 
   useEffect(() => {
     setLocalActive(readJson<LocalActive | null>(ACTIVE_KEY, null));
-    setIsOnline(typeof navigator === "undefined" ? true : navigator.onLine);
 
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     const handleOnline = () => {
-      setIsOnline(true);
       void flushQueue();
     };
-    const handleOffline = () => setIsOnline(false);
 
     window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     void flushQueue();
 
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
     };
   }, [flushQueue]);
 
@@ -395,7 +387,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
       <header className="header">
         <div className="logo">
           <div className="logo-mark" />
-          <span className="logo-text">Folio</span>
+          <span className="logo-text">BookTime</span>
         </div>
         <button className="btn-add" type="button" onClick={addBookFromPrompt}>
           {plusIcon()}
@@ -413,10 +405,6 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
           <span className="stat-kicker">Books in progress</span>
           <span className="stat-value">{dashboard.booksInProgress}</span>
           <span className="stat-label">active books</span>
-        </div>
-        <div className="stat-item stat-connection" aria-live="polite">
-          <span className="stat-kicker">Sync</span>
-          <span className="stat-value">{isOnline ? "online" : "queued"}</span>
         </div>
       </section>
 

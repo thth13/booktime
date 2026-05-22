@@ -16,7 +16,7 @@ export default async function Home() {
       <main className="setup-error">
         <div className="logo">
           <div className="logo-mark" />
-          <span className="logo-text">Folio</span>
+          <span className="logo-text">BookTime</span>
         </div>
         <h1>MongoDB is not connected</h1>
         <p>{message}</p>

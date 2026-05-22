@@ -29,45 +29,6 @@ type SessionDoc = {
   updatedAt: Date;
 };
 
-const defaultBooks = [
-  {
-    title: "The Master and Margarita",
-    author: "Mikhail Bulgakov",
-    coverClass: "cover-1",
-    totalSeconds: 5 * 3600 + 48 * 60,
-    sessionsCount: 16,
-    progress: 65,
-    status: "reading" as const,
-  },
-  {
-    title: "Flowers for Algernon",
-    author: "Daniel Keyes",
-    coverClass: "cover-2",
-    totalSeconds: 3 * 3600 + 14 * 60,
-    sessionsCount: 12,
-    progress: 40,
-    status: "reading" as const,
-  },
-  {
-    title: "Meditations",
-    author: "Marcus Aurelius",
-    coverClass: "cover-3",
-    totalSeconds: 1 * 3600 + 50 * 60,
-    sessionsCount: 7,
-    progress: 22,
-    status: "reading" as const,
-  },
-  {
-    title: "Steppenwolf",
-    author: "Hermann Hesse",
-    coverClass: "cover-4",
-    totalSeconds: 8 * 3600 + 3 * 60,
-    sessionsCount: 19,
-    progress: 100,
-    status: "finished" as const,
-  },
-];
-
 async function getDb(): Promise<Db> {
   const client = await getMongoClient();
   return client.db(process.env.MONGODB_DB || "booktime");
@@ -83,22 +44,8 @@ async function ensureIndexes(db: Db) {
   ]);
 }
 
-async function seedBooks(db: Db) {
+async function prepareDatabase(db: Db) {
   await ensureIndexes(db);
-  const count = await db.collection<BookDoc>("books").countDocuments();
-
-  if (count > 0) {
-    return;
-  }
-
-  const now = new Date();
-  await db.collection("books").insertMany(
-    defaultBooks.map((book) => ({
-      ...book,
-      createdAt: now,
-      updatedAt: now,
-    })),
-  );
 }
 
 function asObjectId(value: string): ObjectId {
@@ -168,7 +115,7 @@ function toActiveView(session: SessionDoc | null): ActiveSessionView | null {
 
 export async function getDashboard(): Promise<DashboardView> {
   const db = await getDb();
-  await seedBooks(db);
+  await prepareDatabase(db);
 
   const now = new Date();
   const weekStart = startOfWeek(now);
@@ -204,7 +151,7 @@ export async function startReading(input: {
   eventId: string;
 }): Promise<DashboardView> {
   const db = await getDb();
-  await seedBooks(db);
+  await prepareDatabase(db);
 
   const bookId = asObjectId(input.bookId);
   const startedAt = new Date(input.startedAt);
@@ -283,7 +230,7 @@ export async function stopReading(input: {
   eventId: string;
 }): Promise<DashboardView> {
   const db = await getDb();
-  await seedBooks(db);
+  await prepareDatabase(db);
 
   const bookId = asObjectId(input.bookId);
   const stoppedAt = new Date(input.stoppedAt);
@@ -344,7 +291,7 @@ export async function addBook(input: {
   author: string;
 }): Promise<DashboardView> {
   const db = await getDb();
-  await seedBooks(db);
+  await prepareDatabase(db);
 
   const title = input.title.trim();
   const author = input.author.trim();

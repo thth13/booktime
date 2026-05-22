@@ -1,9 +1,25 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
 export const metadata: Metadata = {
-  title: "Folio - Reading Time Tracker",
-  description: "A persistent reading time tracker backed by MongoDB",
+  metadataBase: new URL(siteUrl),
+  title: "BookTime",
+  description: "A simple reading time tracker for books.",
+  openGraph: {
+    title: "BookTime",
+    description: "A simple reading time tracker for books.",
+    images: ["/ogimage.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BookTime",
+    description: "A simple reading time tracker for books.",
+    images: ["/ogimage.png"],
+  },
 };
 
 export default function RootLayout({
