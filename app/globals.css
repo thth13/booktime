@@ -57,37 +57,8 @@ button {
 .logo-mark {
   width: 32px;
   height: 32px;
-  background: var(--amber);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.logo-mark::before {
-  content: '';
-  position: absolute;
-  left: 7px;
-  top: 7px;
-  width: 18px;
-  height: 18px;
-  background: rgba(255,255,255,0.25);
-  border-radius: 2px;
-  transform: rotate(-5deg);
-}
-
-.logo-mark::after {
-  content: '';
-  position: absolute;
-  left: 9px;
-  top: 9px;
-  width: 14px;
-  height: 14px;
-  background: rgba(255,255,255,0.18);
-  border-radius: 2px;
-  transform: rotate(5deg);
+  flex-shrink: 0;
+  color: var(--amber);
 }
 
 .logo-text {
@@ -174,6 +145,29 @@ button {
   max-width: 420px;
   margin: 72px auto 0;
   padding: 0 24px;
+}
+
+.app-loading {
+  min-height: 100vh;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-loading-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-loading-brand .logo-mark {
+  width: 64px;
+  height: 64px;
+}
+
+.app-loading-brand .logo-text {
+  font-size: 42px;
 }
 
 .auth-copy h1 {

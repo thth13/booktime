@@ -172,6 +172,34 @@ function returnIcon() {
   );
 }
 
+function logoMark() {
+  return (
+    <svg className="logo-mark" width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="currentColor" />
+      <path
+        d="M6.8 10.05c0-.62.45-1.16 1.06-1.27 2.84-.54 5.56.03 8.14 1.71 2.58-1.68 5.3-2.25 8.14-1.71.61.11 1.06.65 1.06 1.27v13.28c0 .75-.67 1.32-1.41 1.18-2.43-.46-4.73.04-6.9 1.5-.54.36-1.24.36-1.78 0-2.17-1.46-4.47-1.96-6.9-1.5-.74.14-1.41-.43-1.41-1.18V10.05Z"
+        fill="rgba(255,255,255,0.18)"
+      />
+      <path
+        d="M8.95 9.95c2.3-.3 4.33.19 6.08 1.47.36.27.57.7.57 1.14v11.07c-1.96-1.39-4.18-1.94-6.65-1.65V9.95Z"
+        fill="rgba(255,248,242,0.92)"
+      />
+      <path
+        d="M23.05 9.95c-2.3-.3-4.33.19-6.08 1.47-.36.27-.57.7-.57 1.14v11.07c1.96-1.39 4.18-1.94 6.65-1.65V9.95Z"
+        fill="rgba(255,248,242,0.84)"
+      />
+      <path d="M16 11.65v11.9" stroke="rgba(44,31,15,0.18)" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M11.2 13.25h2.15M11.2 15.75h2.85M11.2 18.25h2.45" stroke="rgba(44,31,15,0.28)" strokeWidth="1.15" strokeLinecap="round" />
+      <path
+        d="M19.35 10.1v5.9l1.32-1.02L22 16v-5.78a8.4 8.4 0 0 0-2.65-.12Z"
+        fill="rgba(160,98,42,0.72)"
+      />
+      <circle cx="20.68" cy="18.72" r="2.18" fill="rgba(255,248,242,0.96)" />
+      <path d="M20.68 17.55v1.28l.88.58" stroke="rgba(160,98,42,0.9)" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 async function postJson(url: string, body: unknown, accountIdentifier: string): Promise<DashboardView> {
   const response = await fetch(url, {
     method: "POST",
@@ -803,12 +831,23 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const finishedBooks = books.filter((book) => book.status === "finished");
   const visibleSessionBook = sessionBook ? books.find((book) => book.id === sessionBook.id) ?? sessionBook : null;
 
-  if (auth.status !== "signedIn" || !accountIdentifier || !dashboard) {
+  if (auth.status === "checking" || (auth.status === "signedIn" && !dashboard)) {
+    return (
+      <main className="app-loading" aria-label="Loading application" aria-busy="true">
+        <div className="app-loading-brand">
+          {logoMark()}
+          <span className="logo-text">BookTime</span>
+        </div>
+      </main>
+    );
+  }
+
+  if (auth.status === "signedOut" || !accountIdentifier || !dashboard) {
     return (
       <>
         <header className="header">
           <div className="logo">
-            <div className="logo-mark" />
+            {logoMark()}
             <span className="logo-text">BookTime</span>
           </div>
         </header>
@@ -832,20 +871,20 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
               placeholder="BT-XXXX-XXXX-XXXX"
               autoCapitalize="characters"
               autoComplete="off"
-              disabled={authBusy || auth.status === "checking"}
+              disabled={authBusy}
             />
 
             {authError ? <p className="auth-error">{authError}</p> : null}
 
             <div className="auth-actions">
-              <button className="btn-primary" type="submit" disabled={authBusy || auth.status === "checking"}>
+              <button className="btn-primary" type="submit" disabled={authBusy}>
                 Sign in
               </button>
               <button
                 className="btn-secondary"
                 type="button"
                 onClick={registerAccount}
-                disabled={authBusy || auth.status === "checking"}
+                disabled={authBusy}
               >
                 Create account
               </button>
@@ -860,7 +899,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     <>
       <header className="header">
         <div className="logo">
-          <div className="logo-mark" />
+          {logoMark()}
           <span className="logo-text">BookTime</span>
         </div>
         <div className="header-actions">
