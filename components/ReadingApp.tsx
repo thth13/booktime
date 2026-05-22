@@ -19,6 +19,8 @@ type LocalActive = {
   eventId: string;
 };
 
+type DisplayBook = BookView & { displaySeconds: number };
+
 type AuthState =
   | { status: "checking" }
   | { status: "signedOut" }
@@ -268,7 +270,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const [pendingDeleteBook, setPendingDeleteBook] = useState<BookView | null>(null);
   const [bookActionError, setBookActionError] = useState<string | null>(null);
   const [bookActionBusy, setBookActionBusy] = useState(false);
-  const [sessionBook, setSessionBook] = useState<BookView | null>(null);
+  const [sessionBook, setSessionBook] = useState<DisplayBook | null>(null);
   const [sessions, setSessions] = useState<ReadingSessionView[]>([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -752,7 +754,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     }
   }
 
-  async function openBookSessions(book: BookView) {
+  async function openBookSessions(book: DisplayBook) {
     if (!accountIdentifier) {
       return;
     }
@@ -1018,7 +1020,9 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
               </div>
               <div className="sessions-heading">
                 <h2 id="sessions-title">{visibleSessionBook.title}</h2>
-                <p>{visibleSessionBook.sessionsCount} sessions</p>
+                <p>
+                  {visibleSessionBook.sessionsCount} sessions · {formatShortTime(visibleSessionBook.displaySeconds)}
+                </p>
               </div>
               <button
                 className="session-close"
@@ -1183,7 +1187,7 @@ function BookCard({
   actionsDisabled,
   reread = false,
 }: {
-  book: BookView & { displaySeconds: number };
+  book: DisplayBook;
   onStart: () => void;
   onMarkFinished: () => void;
   onMarkReading: () => void;
@@ -1340,7 +1344,7 @@ function BookCard({
           ) : (
             <div className="book-sessions">
               {book.status === "finished" ? "Finished · " : ""}
-              {book.sessionsCount} sessions
+              {book.sessionsCount} sessions · {formatShortTime(book.displaySeconds)}
             </div>
           )}
         </div>
