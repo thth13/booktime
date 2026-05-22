@@ -1,7 +1,17 @@
 "use client";
 
-import { type CSSProperties, type FormEvent, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ActiveSessionView, BookView, DashboardView, OfflineEvent } from "@/lib/types";
+import {
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { ActiveSessionView, BookView, DashboardView, OfflineEvent, ReadingSessionView } from "@/lib/types";
 
 type LocalActive = {
   bookId: string;
@@ -75,6 +85,15 @@ function formatTimer(totalSeconds: number): string {
   const seconds = totalSeconds % 60;
 
   return [hours, minutes, seconds].map((part) => part.toString().padStart(2, "0")).join(":");
+}
+
+function formatSessionDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function playIcon() {
@@ -208,6 +227,20 @@ async function fetchDashboard(accountIdentifier: string): Promise<DashboardView>
   return payload as DashboardView;
 }
 
+async function fetchBookSessions(bookId: string, accountIdentifier: string): Promise<ReadingSessionView[]> {
+  const response = await fetch(`/api/sessions?bookId=${encodeURIComponent(bookId)}`, {
+    cache: "no-store",
+    headers: { "x-booktime-account": accountIdentifier },
+  });
+  const payload = (await response.json()) as { sessions?: ReadingSessionView[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Sessions request failed.");
+  }
+
+  return payload.sessions ?? [];
+}
+
 async function createAccount(): Promise<{ identifier: string }> {
   const response = await fetch("/api/accounts", { method: "POST" });
   const payload = (await response.json()) as { identifier?: string; error?: string };
@@ -235,6 +268,11 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const [pendingDeleteBook, setPendingDeleteBook] = useState<BookView | null>(null);
   const [bookActionError, setBookActionError] = useState<string | null>(null);
   const [bookActionBusy, setBookActionBusy] = useState(false);
+  const [sessionBook, setSessionBook] = useState<BookView | null>(null);
+  const [sessions, setSessions] = useState<ReadingSessionView[]>([]);
+  const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const flushInProgress = useRef(false);
   const accountIdentifier = auth.status === "signedIn" ? auth.identifier : null;
@@ -714,8 +752,54 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     }
   }
 
+  async function openBookSessions(book: BookView) {
+    if (!accountIdentifier) {
+      return;
+    }
+
+    setSessionBook(book);
+    setSessions([]);
+    setSessionsError(null);
+    setSessionsBusy(true);
+    setOpenActionBookId(null);
+
+    try {
+      await flushQueue();
+      setSessions(await fetchBookSessions(book.id, accountIdentifier));
+    } catch (error) {
+      setSessionsError(error instanceof Error ? error.message : "Failed to load sessions.");
+    } finally {
+      setSessionsBusy(false);
+    }
+  }
+
+  async function deleteSession(sessionId: string) {
+    if (!accountIdentifier || !sessionBook) {
+      return;
+    }
+
+    setDeletingSessionId(sessionId);
+    setSessionsError(null);
+
+    try {
+      const nextDashboard = await mutateJson("/api/sessions", "DELETE", { sessionId }, accountIdentifier);
+      applyDashboard(nextDashboard);
+      setSessions(await fetchBookSessions(sessionBook.id, accountIdentifier));
+
+      if (dashboard?.activeSession?.id === sessionId) {
+        window.localStorage.removeItem(getActiveKey(accountIdentifier));
+        setLocalActive(null);
+      }
+    } catch (error) {
+      setSessionsError(error instanceof Error ? error.message : "Failed to delete session.");
+    } finally {
+      setDeletingSessionId(null);
+    }
+  }
+
   const readingBooks = books.filter((book) => book.status === "reading");
   const finishedBooks = books.filter((book) => book.status === "finished");
+  const visibleSessionBook = sessionBook ? books.find((book) => book.id === sessionBook.id) ?? sessionBook : null;
 
   if (auth.status !== "signedIn" || !accountIdentifier || !dashboard) {
     return (
@@ -909,6 +993,86 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
         </div>
       ) : null}
 
+      {visibleSessionBook ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!sessionsBusy && !deletingSessionId) {
+              setSessionBook(null);
+              setSessionsError(null);
+            }
+          }}
+        >
+          <section
+            className="sessions-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sessions-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="sessions-header">
+              <div className={`book-cover ${visibleSessionBook.coverClass}`} aria-hidden="true">
+                <div className="cover-line" />
+                <div className="cover-line" />
+              </div>
+              <div className="sessions-heading">
+                <h2 id="sessions-title">{visibleSessionBook.title}</h2>
+                <p>{visibleSessionBook.sessionsCount} sessions</p>
+              </div>
+              <button
+                className="session-close"
+                type="button"
+                onClick={() => {
+                  setSessionBook(null);
+                  setSessionsError(null);
+                }}
+                disabled={sessionsBusy || Boolean(deletingSessionId)}
+                aria-label="Close sessions"
+              >
+                x
+              </button>
+            </div>
+
+            {sessionsError ? <p className="book-action-error sessions-error">{sessionsError}</p> : null}
+
+            <div className="sessions-list" aria-live="polite">
+              {sessionsBusy ? (
+                <div className="session-empty">Loading sessions...</div>
+              ) : sessions.length > 0 ? (
+                sessions.map((session) => {
+                  const duration = session.isActive ? secondsBetween(session.startedAt, now) : session.durationSeconds;
+
+                  return (
+                    <div className="session-row" key={session.id}>
+                      <div className="session-main">
+                        <div className="session-date">
+                          {formatSessionDate(session.startedAt)}
+                          {session.isActive ? <span className="session-live">Active</span> : null}
+                        </div>
+                        <div className="session-duration">{formatTimer(duration)}</div>
+                      </div>
+                      <button
+                        className="session-delete"
+                        type="button"
+                        onClick={() => deleteSession(session.id)}
+                        disabled={Boolean(deletingSessionId)}
+                        aria-label="Delete session"
+                        title="Delete session"
+                      >
+                        {deletingSessionId === session.id ? "..." : trashIcon()}
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="session-empty">No reading sessions yet.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <section className="stats-row" aria-label="Reading summary">
         <div className="stat-item stat-time">
           <span className="stat-kicker">Total this week</span>
@@ -937,6 +1101,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
               setPendingDeleteBook(book);
               setBookActionError(null);
             }}
+            onOpenSessions={() => openBookSessions(book)}
             isActionsOpen={openActionBookId === book.id}
             onActionsOpen={() => setOpenActionBookId(book.id)}
             onActionsClose={() => setOpenActionBookId(null)}
@@ -965,6 +1130,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
                   setPendingDeleteBook(book);
                   setBookActionError(null);
                 }}
+                onOpenSessions={() => openBookSessions(book)}
                 isActionsOpen={openActionBookId === book.id}
                 onActionsOpen={() => setOpenActionBookId(book.id)}
                 onActionsClose={() => setOpenActionBookId(null)}
@@ -1010,6 +1176,7 @@ function BookCard({
   onMarkFinished,
   onMarkReading,
   onDeleteRequest,
+  onOpenSessions,
   isActionsOpen,
   onActionsOpen,
   onActionsClose,
@@ -1021,6 +1188,7 @@ function BookCard({
   onMarkFinished: () => void;
   onMarkReading: () => void;
   onDeleteRequest: () => void;
+  onOpenSessions: () => void;
   isActionsOpen: boolean;
   onActionsOpen: () => void;
   onActionsClose: () => void;
@@ -1030,6 +1198,7 @@ function BookCard({
   const actionWidth = 184;
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const gesture = useRef<{ startX: number; startY: number; dragging: boolean } | null>(null);
+  const suppressClick = useRef(false);
   const offset = dragOffset ?? (isActionsOpen ? -actionWidth : 0);
   const areActionsVisible = isActionsOpen || dragOffset !== null;
 
@@ -1072,15 +1241,35 @@ function BookCard({
   }
 
   function handlePointerEnd() {
+    const wasDragging = Boolean(gesture.current?.dragging);
     const shouldOpen = offset < -actionWidth / 2;
     gesture.current = null;
     setDragOffset(null);
+    suppressClick.current = wasDragging;
 
     if (shouldOpen) {
       onActionsOpen();
     } else {
       onActionsClose();
     }
+  }
+
+  function handleCardClick() {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+
+    onOpenSessions();
+  }
+
+  function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    onOpenSessions();
   }
 
   const swipeStyle = { "--swipe-offset": `${offset}px` } as CSSProperties;
@@ -1130,6 +1319,11 @@ function BookCard({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
+        onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open reading sessions for ${book.title}`}
       >
         <div className={`book-cover ${book.coverClass}`}>
           <div className="cover-line" />
@@ -1160,7 +1354,12 @@ function BookCard({
         <button
           className={`btn-start${book.isActive ? " reading" : ""}${reread ? " reread" : ""}`}
           type="button"
-          onClick={onStart}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onStart();
+          }}
           disabled={actionsDisabled}
         >
           {book.isActive ? pauseIcon() : playIcon()}

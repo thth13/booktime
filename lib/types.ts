@@ -18,6 +18,15 @@ export type ActiveSessionView = {
   startedAt: string;
 };
 
+export type ReadingSessionView = {
+  id: string;
+  bookId: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number;
+  isActive: boolean;
+};
+
 export type DashboardView = {
   books: BookView[];
   activeSession: ActiveSessionView | null;

@@ -3,7 +3,7 @@ import "server-only";
 import { ObjectId, type Db } from "mongodb";
 import { ensureAccountIndexes, requireAccount } from "@/lib/accounts";
 import { getMongoClient } from "@/lib/mongodb";
-import type { ActiveSessionView, BookStatus, BookView, DashboardView } from "@/lib/types";
+import type { ActiveSessionView, BookStatus, BookView, DashboardView, ReadingSessionView } from "@/lib/types";
 
 type BookDoc = {
   _id: ObjectId;
@@ -55,6 +55,14 @@ async function prepareDatabase(db: Db) {
 function asObjectId(value: string): ObjectId {
   if (!ObjectId.isValid(value)) {
     throw new Error("Invalid book id.");
+  }
+
+  return new ObjectId(value);
+}
+
+function asSessionObjectId(value: string): ObjectId {
+  if (!ObjectId.isValid(value)) {
+    throw new Error("Invalid session id.");
   }
 
   return new ObjectId(value);
@@ -117,6 +125,19 @@ function toActiveView(session: SessionDoc | null): ActiveSessionView | null {
   };
 }
 
+function toReadingSessionView(session: SessionDoc, now: Date): ReadingSessionView {
+  const isActive = !session.endedAt;
+
+  return {
+    id: session._id.toString(),
+    bookId: session.bookId.toString(),
+    startedAt: session.startedAt.toISOString(),
+    endedAt: session.endedAt?.toISOString() ?? null,
+    durationSeconds: isActive ? activeElapsed(session, now) : session.durationSeconds ?? 0,
+    isActive,
+  };
+}
+
 export async function getDashboard(accountIdentifier: string): Promise<DashboardView> {
   const db = await getDb();
   await prepareDatabase(db);
@@ -151,6 +172,31 @@ export async function getDashboard(accountIdentifier: string): Promise<Dashboard
     booksInProgress: books.filter((book) => book.status === "reading").length,
     serverNow: now.toISOString(),
   };
+}
+
+export async function getBookSessions(input: {
+  accountIdentifier: string;
+  bookId: string;
+}): Promise<ReadingSessionView[]> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const bookId = asObjectId(input.bookId);
+
+  const book = await db.collection<BookDoc>("books").findOne({ _id: bookId, accountId: account._id });
+  if (!book) {
+    throw new Error("Book was not found.");
+  }
+
+  const now = new Date();
+  const sessions = await db
+    .collection<SessionDoc>("reading_sessions")
+    .find({ accountId: account._id, bookId })
+    .sort({ startedAt: -1 })
+    .toArray();
+
+  return sessions.map((session) => toReadingSessionView(session, now));
 }
 
 export async function startReading(input: {
@@ -451,6 +497,47 @@ export async function deleteBook(input: {
   }
 
   await db.collection<SessionDoc>("reading_sessions").deleteMany({ accountId: account._id, bookId });
+
+  return getDashboard(input.accountIdentifier);
+}
+
+export async function deleteReadingSession(input: {
+  accountIdentifier: string;
+  sessionId: string;
+}): Promise<DashboardView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const sessionId = asSessionObjectId(input.sessionId);
+  const session = await db.collection<SessionDoc>("reading_sessions").findOne({
+    _id: sessionId,
+    accountId: account._id,
+  });
+
+  if (!session) {
+    throw new Error("Session was not found.");
+  }
+
+  await db.collection<SessionDoc>("reading_sessions").deleteOne({ _id: sessionId, accountId: account._id });
+
+  if (session.endedAt) {
+    const durationSeconds = session.durationSeconds ?? secondsBetween(session.startedAt, session.endedAt);
+    const book = await db.collection<BookDoc>("books").findOne({ _id: session.bookId, accountId: account._id });
+
+    if (book) {
+      await db.collection<BookDoc>("books").updateOne(
+        { _id: session.bookId, accountId: account._id },
+        {
+          $set: {
+            totalSeconds: Math.max(0, book.totalSeconds - durationSeconds),
+            sessionsCount: Math.max(0, book.sessionsCount - 1),
+            updatedAt: new Date(),
+          },
+        },
+      );
+    }
+  }
 
   return getDashboard(input.accountIdentifier);
 }
