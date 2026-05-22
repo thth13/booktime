@@ -3,7 +3,16 @@ import "server-only";
 import { ObjectId, type Db } from "mongodb";
 import { ensureAccountIndexes, requireAccount } from "@/lib/accounts";
 import { getMongoClient } from "@/lib/mongodb";
-import type { ActiveSessionView, BookStatus, BookView, DashboardView, ReadingSessionView } from "@/lib/types";
+import type {
+  ActiveSessionView,
+  BookStatus,
+  BookView,
+  DashboardView,
+  FinishedBooksView,
+  FinishedBookView,
+  ReadingSessionView,
+  ReadingStatisticsView,
+} from "@/lib/types";
 
 type BookDoc = {
   _id: ObjectId;
@@ -15,6 +24,7 @@ type BookDoc = {
   totalSeconds: number;
   sessionsCount: number;
   progress: number;
+  finishedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -41,6 +51,7 @@ async function ensureIndexes(db: Db) {
   await Promise.all([
     ensureAccountIndexes(db),
     db.collection("books").createIndex({ accountId: 1, createdAt: 1 }),
+    db.collection("books").createIndex({ accountId: 1, status: 1, finishedAt: -1 }),
     db.collection("reading_sessions").createIndex({ accountId: 1, endedAt: 1 }),
     db.collection("reading_sessions").createIndex({ accountId: 1, bookId: 1, endedAt: 1 }),
     db.collection("reading_sessions").createIndex({ accountId: 1, startEventId: 1 }, { unique: true }),
@@ -138,6 +149,18 @@ function toReadingSessionView(session: SessionDoc, now: Date): ReadingSessionVie
   };
 }
 
+function toFinishedBookView(book: BookDoc): FinishedBookView {
+  return {
+    id: book._id.toString(),
+    title: book.title,
+    author: book.author,
+    coverClass: book.coverClass,
+    totalSeconds: book.totalSeconds,
+    sessionsCount: book.sessionsCount,
+    finishedAt: (book.finishedAt ?? book.updatedAt).toISOString(),
+  };
+}
+
 export async function getDashboard(accountIdentifier: string): Promise<DashboardView> {
   const db = await getDb();
   await prepareDatabase(db);
@@ -197,6 +220,107 @@ export async function getBookSessions(input: {
     .toArray();
 
   return sessions.map((session) => toReadingSessionView(session, now));
+}
+
+export async function getReadingStatistics(input: {
+  accountIdentifier: string;
+  from: string;
+  to: string;
+}): Promise<ReadingStatisticsView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const from = new Date(input.from);
+  const to = new Date(input.to);
+
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+    throw new Error("Invalid statistics range.");
+  }
+
+  const now = new Date();
+  const sessions = await db
+    .collection<SessionDoc>("reading_sessions")
+    .find({
+      accountId: account._id,
+      startedAt: { $lt: to },
+      $or: [{ endedAt: null }, { endedAt: { $gt: from } }],
+    })
+    .sort({ startedAt: 1 })
+    .toArray();
+
+  return {
+    sessions: sessions.map((session) => toReadingSessionView(session, now)),
+    serverNow: now.toISOString(),
+  };
+}
+
+export async function getFinishedBooks(accountIdentifier: string): Promise<FinishedBooksView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(accountIdentifier);
+  const books = await db
+    .collection<BookDoc>("books")
+    .find({ accountId: account._id, status: "finished" })
+    .toArray();
+
+  return {
+    books: books
+      .map((book) => toFinishedBookView(book))
+      .sort((first, second) => new Date(second.finishedAt).getTime() - new Date(first.finishedAt).getTime()),
+  };
+}
+
+export async function updateFinishedBook(input: {
+  accountIdentifier: string;
+  bookId: string;
+  title: string;
+  author: string;
+  finishedAt: string;
+}): Promise<FinishedBooksView> {
+  const db = await getDb();
+  await prepareDatabase(db);
+
+  const account = await requireAccount(input.accountIdentifier);
+  const bookId = asObjectId(input.bookId);
+  const title = input.title.trim();
+  const author = input.author.trim();
+  const finishedAt = new Date(input.finishedAt);
+
+  if (!title || !author) {
+    throw new Error("Title and author are required.");
+  }
+
+  if (Number.isNaN(finishedAt.getTime())) {
+    throw new Error("Invalid finish timestamp.");
+  }
+
+  const result = await db.collection<BookDoc>("books").updateOne(
+    { _id: bookId, accountId: account._id, status: "finished" },
+    {
+      $set: {
+        title,
+        author,
+        finishedAt,
+        updatedAt: new Date(),
+      },
+    },
+  );
+
+  if (!result.matchedCount) {
+    throw new Error("Book was not found.");
+  }
+
+  return getFinishedBooks(input.accountIdentifier);
+}
+
+export async function deleteFinishedBook(input: {
+  accountIdentifier: string;
+  bookId: string;
+}): Promise<FinishedBooksView> {
+  await deleteBook(input);
+  return getFinishedBooks(input.accountIdentifier);
 }
 
 export async function startReading(input: {
@@ -415,12 +539,13 @@ export async function markBookFinished(input: {
     { sort: { startedAt: -1 } },
   );
 
-  const updates: Partial<Pick<BookDoc, "status" | "progress" | "updatedAt">> & {
+  const updates: Partial<Pick<BookDoc, "status" | "progress" | "finishedAt" | "updatedAt">> & {
     totalSeconds?: number;
     sessionsCount?: number;
   } = {
     status: "finished",
     progress: 100,
+    finishedAt,
     updatedAt: now,
   };
 
@@ -470,6 +595,9 @@ export async function markBookReading(input: {
         status: "reading",
         progress: 0,
         updatedAt: new Date(),
+      },
+      $unset: {
+        finishedAt: "",
       },
     },
   );

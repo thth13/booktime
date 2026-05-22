@@ -52,6 +52,8 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
+  color: inherit;
+  text-decoration: none;
 }
 
 .logo-mark {
@@ -117,6 +119,45 @@ button {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.header-link,
+.header-icon-link {
+  min-height: 38px;
+  border: 1px solid var(--border-light);
+  border-radius: 100px;
+  background: var(--card);
+  color: var(--coffee-mid);
+  text-decoration: none;
+  transition: all 0.18s ease;
+}
+
+.header-link:hover,
+.header-icon-link:hover {
+  border-color: var(--amber-light);
+  color: var(--amber);
+  box-shadow: var(--shadow-sm);
+}
+
+.header-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.header-icon-link {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .account-chip {
@@ -681,6 +722,10 @@ button {
   background: var(--amber-btn);
 }
 
+.action-edit {
+  background: #5F6F8A;
+}
+
 .action-delete {
   background: #9D3434;
 }
@@ -1069,6 +1114,253 @@ button {
   letter-spacing: 0.04em;
 }
 
+.statistics-page {
+  max-width: 760px;
+  margin: 28px auto 0;
+  padding: 0 24px;
+}
+
+.statistics-toolbar {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 14px;
+}
+
+.month-nav-btn {
+  width: 42px;
+  height: 42px;
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  background: transparent;
+  color: var(--coffee-mid);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+}
+
+.month-nav-btn:hover {
+  background: var(--card);
+  border-color: var(--amber-light);
+  color: var(--amber);
+  box-shadow: var(--shadow-sm);
+}
+
+.statistics-title {
+  min-width: 0;
+  text-align: center;
+}
+
+.statistics-title h1,
+.statistics-empty h1 {
+  font-family: 'Lora', serif;
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--coffee);
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.statistics-title p,
+.statistics-empty p {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.statistics-error {
+  margin-top: 16px;
+}
+
+.month-calendar {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  transition: opacity 0.18s ease;
+}
+
+.month-calendar.loading {
+  opacity: 0.58;
+}
+
+.weekday-cell {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.day-cell {
+  min-height: 84px;
+  padding: 10px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.day-cell.outside-month {
+  opacity: 0.38;
+  background: transparent;
+  box-shadow: none;
+}
+
+.day-cell.has-reading {
+  border-color: rgba(160,98,42,0.28);
+  background: #FEFAF5;
+}
+
+.day-number {
+  color: var(--coffee-mid);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hours {
+  margin-top: 8px;
+  color: var(--coffee);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hours-label {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.statistics-empty {
+  max-width: 420px;
+  margin-top: 64px;
+}
+
+.statistics-empty-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 18px;
+  text-decoration: none;
+}
+
+.edit-finished-modal {
+  width: min(520px, 100%);
+}
+
+.modal-title {
+  font-family: 'Lora', serif;
+  font-size: 21px;
+  font-weight: 500;
+  color: var(--coffee);
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.finished-page {
+  max-width: 760px;
+  margin: 32px auto 0;
+  padding: 0 24px;
+}
+
+.finished-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  transition: opacity 0.18s ease;
+}
+
+.finished-groups.loading {
+  opacity: 0.58;
+}
+
+.finished-month h1 {
+  font-family: 'Lora', serif;
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--coffee);
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.finished-book-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.finished-book-row {
+  min-height: 78px;
+  padding: 14px 18px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.finished-book-row .book-cover {
+  width: 38px;
+  height: 52px;
+}
+
+.finished-book-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.finished-book-info h2 {
+  font-family: 'Lora', serif;
+  font-size: 15.5px;
+  font-weight: 500;
+  color: var(--coffee);
+  line-height: 1.3;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finished-book-info p {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finished-book-meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.finished-book-meta span:first-child {
+  color: var(--coffee-mid);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .setup-error {
   max-width: 720px;
   margin: 72px auto 0;
@@ -1099,6 +1391,16 @@ button {
   .header-actions {
     width: 100%;
     flex-wrap: wrap;
+  }
+  .header-link {
+    min-height: 34px;
+    padding: 7px 12px;
+  }
+  .header-icon-link {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
   }
   .account-chip {
     position: absolute;
@@ -1167,4 +1469,55 @@ button {
   .btn-start { padding: 9px 15px; font-size: 13px; }
   .player-panel { bottom: 12px; }
   .book-time-wrap { display: none; }
+  .statistics-page {
+    margin-top: 24px;
+    padding: 0 16px;
+  }
+  .finished-page {
+    margin-top: 26px;
+    padding: 0 16px;
+  }
+  .finished-groups {
+    gap: 28px;
+  }
+  .finished-month h1 {
+    font-size: 23px;
+  }
+  .finished-book-row {
+    min-height: 72px;
+    padding: 12px 14px;
+    gap: 12px;
+  }
+  .finished-book-row .book-cover {
+    width: 34px;
+    height: 46px;
+  }
+  .finished-book-meta {
+    display: none;
+  }
+  .statistics-toolbar {
+    grid-template-columns: 38px 1fr 38px;
+    gap: 10px;
+  }
+  .month-nav-btn {
+    width: 38px;
+    height: 38px;
+  }
+  .statistics-title h1,
+  .statistics-empty h1 {
+    font-size: 24px;
+  }
+  .month-calendar {
+    gap: 6px;
+  }
+  .day-cell {
+    min-height: 72px;
+    padding: 8px 4px;
+  }
+  .day-hours {
+    font-size: 18px;
+  }
+  .day-hours-label {
+    font-size: 9.5px;
+  }
 }

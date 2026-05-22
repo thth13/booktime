@@ -35,6 +35,25 @@ export type DashboardView = {
   serverNow: string;
 };
 
+export type ReadingStatisticsView = {
+  sessions: ReadingSessionView[];
+  serverNow: string;
+};
+
+export type FinishedBookView = {
+  id: string;
+  title: string;
+  author: string;
+  coverClass: string;
+  totalSeconds: number;
+  sessionsCount: number;
+  finishedAt: string;
+};
+
+export type FinishedBooksView = {
+  books: FinishedBookView[];
+};
+
 export type OfflineEvent =
   | {
       eventId: string;

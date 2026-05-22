@@ -20,6 +20,12 @@ export const metadata: Metadata = {
       { url: favicon192.src, sizes: "192x192", type: "image/png" },
     ],
     shortcut: favicon32.src,
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    title: "BookTime",
+    capable: true,
+    statusBarStyle: "default",
   },
   openGraph: {
     title: "BookTime",

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   type CSSProperties,
   type FormEvent,
@@ -168,6 +169,23 @@ function returnIcon() {
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
       <path d="M5.2 4.2H10a3 3 0 0 1 0 6H4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M5.2 1.9L2.9 4.2l2.3 2.3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function statsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3.5 13V8.5M8 13V3M12.5 13V6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function finishedIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4.2 7.8l2.4 2.4 5.2-5.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 3.5h5M3 12.5h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -903,6 +921,12 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
           <span className="logo-text">BookTime</span>
         </div>
         <div className="header-actions">
+          <Link className="header-icon-link" href="/finished" aria-label="Finished books" title="Finished books">
+            {finishedIcon()}
+          </Link>
+          <Link className="header-icon-link" href="/statistics" aria-label="Reading statistics" title="Reading statistics">
+            {statsIcon()}
+          </Link>
           <button className="account-chip" type="button" onClick={copyIdentifier} title="Copy account ID">
             {accountIdentifier}
           </button>
