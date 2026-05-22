@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActiveSessionView, BookView, DashboardView, OfflineEvent } from "@/lib/types";
 
 type LocalActive = {
@@ -9,8 +9,24 @@ type LocalActive = {
   eventId: string;
 };
 
-const EVENT_QUEUE_KEY = "booktime.offlineEvents";
-const ACTIVE_KEY = "booktime.activeSession";
+type AuthState =
+  | { status: "checking" }
+  | { status: "signedOut" }
+  | { status: "signedIn"; identifier: string };
+
+const ACCOUNT_KEY = "booktime.accountIdentifier";
+
+function getEventQueueKey(accountIdentifier: string): string {
+  return `booktime.offlineEvents.${accountIdentifier}`;
+}
+
+function getActiveKey(accountIdentifier: string): string {
+  return `booktime.activeSession.${accountIdentifier}`;
+}
+
+function normalizeAccountIdentifier(identifier: string): string {
+  return identifier.trim().toUpperCase().replace(/\s+/g, "");
+}
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") {
@@ -109,10 +125,13 @@ function plusIcon() {
   );
 }
 
-async function postJson(url: string, body: unknown): Promise<DashboardView> {
+async function postJson(url: string, body: unknown, accountIdentifier: string): Promise<DashboardView> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-booktime-account": accountIdentifier,
+    },
     body: JSON.stringify(body),
   });
 
@@ -125,8 +144,11 @@ async function postJson(url: string, body: unknown): Promise<DashboardView> {
   return payload as DashboardView;
 }
 
-async function fetchDashboard(): Promise<DashboardView> {
-  const response = await fetch("/api/dashboard", { cache: "no-store" });
+async function fetchDashboard(accountIdentifier: string): Promise<DashboardView> {
+  const response = await fetch("/api/dashboard", {
+    cache: "no-store",
+    headers: { "x-booktime-account": accountIdentifier },
+  });
   const payload = (await response.json()) as DashboardView | { error?: string };
 
   if (!response.ok) {
@@ -136,21 +158,68 @@ async function fetchDashboard(): Promise<DashboardView> {
   return payload as DashboardView;
 }
 
-export default function ReadingApp({ initialDashboard }: { initialDashboard: DashboardView }) {
+async function createAccount(): Promise<{ identifier: string }> {
+  const response = await fetch("/api/accounts", { method: "POST" });
+  const payload = (await response.json()) as { identifier?: string; error?: string };
+
+  if (!response.ok || !payload.identifier) {
+    throw new Error(payload.error ?? "Failed to create account.");
+  }
+
+  return { identifier: payload.identifier };
+}
+
+export default function ReadingApp({ initialDashboard }: { initialDashboard: DashboardView | null }) {
   const [dashboard, setDashboard] = useState(initialDashboard);
+  const [auth, setAuth] = useState<AuthState>({ status: "checking" });
+  const [identifierInput, setIdentifierInput] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
   const [localActive, setLocalActive] = useState<LocalActive | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const flushInProgress = useRef(false);
+  const accountIdentifier = auth.status === "signedIn" ? auth.identifier : null;
 
-  const appendEvent = useCallback((event: OfflineEvent) => {
-    const queue = readJson<OfflineEvent[]>(EVENT_QUEUE_KEY, []);
-    writeJson(EVENT_QUEUE_KEY, [...queue, event]);
+  const loadAccount = useCallback(async (rawIdentifier: string) => {
+    const identifier = normalizeAccountIdentifier(rawIdentifier);
+
+    if (!identifier) {
+      throw new Error("Enter your account identifier.");
+    }
+
+    setAuthBusy(true);
+
+    try {
+      const nextDashboard = await fetchDashboard(identifier);
+      window.localStorage.setItem(ACCOUNT_KEY, identifier);
+      setAuth({ status: "signedIn", identifier });
+      setDashboard(nextDashboard);
+      setLocalActive(readJson<LocalActive | null>(getActiveKey(identifier), null));
+      setIdentifierInput(identifier);
+      setAuthError(null);
+    } finally {
+      setAuthBusy(false);
+    }
   }, []);
 
-  const removeEvent = useCallback((eventId: string) => {
-    const queue = readJson<OfflineEvent[]>(EVENT_QUEUE_KEY, []);
+  const appendEvent = useCallback(
+    (event: OfflineEvent) => {
+      if (!accountIdentifier) {
+        return;
+      }
+
+      const key = getEventQueueKey(accountIdentifier);
+      const queue = readJson<OfflineEvent[]>(key, []);
+      writeJson(key, [...queue, event]);
+    },
+    [accountIdentifier],
+  );
+
+  const removeEvent = useCallback((accountIdentifier: string, eventId: string) => {
+    const key = getEventQueueKey(accountIdentifier);
+    const queue = readJson<OfflineEvent[]>(key, []);
     writeJson(
-      EVENT_QUEUE_KEY,
+      key,
       queue.filter((event) => event.eventId !== eventId),
     );
   }, []);
@@ -160,6 +229,10 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   }, []);
 
   const flushQueue = useCallback(async () => {
+    if (!accountIdentifier) {
+      return;
+    }
+
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       return;
     }
@@ -171,7 +244,9 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     flushInProgress.current = true;
 
     try {
-      let queue = readJson<OfflineEvent[]>(EVENT_QUEUE_KEY, []);
+      const queueKey = getEventQueueKey(accountIdentifier);
+      const activeKey = getActiveKey(accountIdentifier);
+      let queue = readJson<OfflineEvent[]>(queueKey, []);
 
       while (queue.length > 0) {
         const event = queue[0];
@@ -181,35 +256,56 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
                 bookId: event.bookId,
                 startedAt: event.occurredAt,
                 eventId: event.eventId,
-              })
+              }, accountIdentifier)
             : await postJson("/api/reading/stop", {
                 bookId: event.bookId,
                 stoppedAt: event.occurredAt,
                 eventId: event.eventId,
-              });
+              }, accountIdentifier);
 
-        removeEvent(event.eventId);
-        queue = readJson<OfflineEvent[]>(EVENT_QUEUE_KEY, []);
+        removeEvent(accountIdentifier, event.eventId);
+        queue = readJson<OfflineEvent[]>(queueKey, []);
 
-        const active = readJson<LocalActive | null>(ACTIVE_KEY, null);
+        const active = readJson<LocalActive | null>(activeKey, null);
         if (active?.eventId === event.eventId) {
-          window.localStorage.removeItem(ACTIVE_KEY);
+          window.localStorage.removeItem(activeKey);
           setLocalActive(null);
         }
 
         applyDashboard(nextDashboard);
       }
 
-      applyDashboard(await fetchDashboard());
+      applyDashboard(await fetchDashboard(accountIdentifier));
     } catch {
       // Events stay queued in localStorage and will retry on the next online event.
     } finally {
       flushInProgress.current = false;
     }
-  }, [applyDashboard, removeEvent]);
+  }, [accountIdentifier, applyDashboard, removeEvent]);
 
   useEffect(() => {
-    setLocalActive(readJson<LocalActive | null>(ACTIVE_KEY, null));
+    const savedIdentifier = window.localStorage.getItem(ACCOUNT_KEY);
+
+    if (!savedIdentifier) {
+      setAuth({ status: "signedOut" });
+      return;
+    }
+
+    void loadAccount(savedIdentifier).catch((error) => {
+      window.localStorage.removeItem(ACCOUNT_KEY);
+      setDashboard(null);
+      setLocalActive(null);
+      setAuth({ status: "signedOut" });
+      setAuthError(error instanceof Error ? error.message : "Failed to sign in.");
+    });
+  }, [loadAccount]);
+
+  useEffect(() => {
+    if (!accountIdentifier) {
+      return;
+    }
+
+    setLocalActive(readJson<LocalActive | null>(getActiveKey(accountIdentifier), null));
 
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     const handleOnline = () => {
@@ -223,12 +319,54 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
       window.clearInterval(timer);
       window.removeEventListener("online", handleOnline);
     };
-  }, [flushQueue]);
+  }, [accountIdentifier, flushQueue]);
 
-  const activeSession: ActiveSessionView | LocalActive | null = localActive ?? dashboard.activeSession;
+  async function registerAccount() {
+    setAuthBusy(true);
+    setAuthError(null);
+
+    try {
+      const account = await createAccount();
+      await loadAccount(account.identifier);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Failed to create account.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthError(null);
+
+    try {
+      await loadAccount(identifierInput);
+    } catch (error) {
+      setAuth({ status: "signedOut" });
+      setDashboard(null);
+      setLocalActive(null);
+      setAuthError(error instanceof Error ? error.message : "Failed to sign in.");
+    }
+  }
+
+  function copyIdentifier() {
+    if (!accountIdentifier || !navigator.clipboard) {
+      return;
+    }
+
+    void navigator.clipboard.writeText(accountIdentifier);
+  }
+
+  const activeSession: ActiveSessionView | LocalActive | null = dashboard
+    ? localActive ?? dashboard.activeSession
+    : null;
 
   const bookBaseSeconds = useCallback(
     (book: BookView): number => {
+      if (!dashboard) {
+        return book.totalSeconds;
+      }
+
       const serverActiveSession = dashboard.activeSession;
 
       if (serverActiveSession?.bookId !== book.id) {
@@ -240,10 +378,14 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
         book.totalSeconds - secondsBetween(serverActiveSession.startedAt, new Date(dashboard.serverNow).getTime()),
       );
     },
-    [dashboard.activeSession, dashboard.serverNow],
+    [dashboard],
   );
 
   const displayedWeekSeconds = useMemo(() => {
+    if (!dashboard) {
+      return 0;
+    }
+
     if (!activeSession) {
       return dashboard.totalThisWeekSeconds;
     }
@@ -258,9 +400,13 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     }
 
     return dashboard.totalThisWeekSeconds + secondsBetween(activeSession.startedAt, now);
-  }, [activeSession, dashboard.activeSession, dashboard.serverNow, dashboard.totalThisWeekSeconds, now]);
+  }, [activeSession, dashboard, now]);
 
   const books = useMemo(() => {
+    if (!dashboard) {
+      return [];
+    }
+
     return dashboard.books.map((book) => {
       if (activeSession?.bookId !== book.id) {
         return {
@@ -276,7 +422,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
         isActive: true,
       };
     });
-  }, [activeSession, bookBaseSeconds, dashboard.books, now]);
+  }, [activeSession, bookBaseSeconds, dashboard, now]);
 
   const activeBook = books.find((book) => activeSession?.bookId === book.id) ?? null;
   const activeTimerSeconds = activeSession ? secondsBetween(activeSession.startedAt, now) : 0;
@@ -290,23 +436,33 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     const stoppedAtMs = new Date(stoppedAt).getTime();
     const duration = secondsBetween(current.startedAt, stoppedAtMs);
 
-    setDashboard((currentDashboard) => ({
-      ...currentDashboard,
-      activeSession: null,
-      books: currentDashboard.books.map((book) =>
-        book.id === current.bookId
-          ? {
-              ...book,
-              totalSeconds: bookBaseSeconds(book) + duration,
-              sessionsCount: book.sessionsCount + 1,
-              isActive: false,
-            }
-          : book,
-      ),
-    }));
+    setDashboard((currentDashboard) => {
+      if (!currentDashboard) {
+        return currentDashboard;
+      }
+
+      return {
+        ...currentDashboard,
+        activeSession: null,
+        books: currentDashboard.books.map((book) =>
+          book.id === current.bookId
+            ? {
+                ...book,
+                totalSeconds: bookBaseSeconds(book) + duration,
+                sessionsCount: book.sessionsCount + 1,
+                isActive: false,
+              }
+            : book,
+        ),
+      };
+    });
   }
 
   function startBook(bookId: string) {
+    if (!accountIdentifier) {
+      return;
+    }
+
     if (activeSession?.bookId === bookId) {
       stopBook();
       return;
@@ -338,13 +494,13 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     };
 
     appendEvent(event);
-    writeJson(ACTIVE_KEY, nextActive);
+    writeJson(getActiveKey(accountIdentifier), nextActive);
     setLocalActive(nextActive);
     void flushQueue();
   }
 
   function stopBook() {
-    if (!activeSession) {
+    if (!accountIdentifier || !activeSession) {
       return;
     }
 
@@ -355,13 +511,17 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
       bookId: activeSession.bookId,
       occurredAt,
     });
-    window.localStorage.removeItem(ACTIVE_KEY);
+    window.localStorage.removeItem(getActiveKey(accountIdentifier));
     setLocalActive(null);
     optimisticallyStopCurrent(occurredAt);
     void flushQueue();
   }
 
   async function addBookFromPrompt() {
+    if (!accountIdentifier) {
+      return;
+    }
+
     const title = window.prompt("Book title");
     if (!title) {
       return;
@@ -373,7 +533,7 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     }
 
     try {
-      applyDashboard(await postJson("/api/books", { title, author }));
+      applyDashboard(await postJson("/api/books", { title, author }, accountIdentifier));
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Failed to add book.");
     }
@@ -382,6 +542,59 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
   const readingBooks = books.filter((book) => book.status === "reading");
   const finishedBooks = books.filter((book) => book.status === "finished");
 
+  if (auth.status !== "signedIn" || !accountIdentifier || !dashboard) {
+    return (
+      <>
+        <header className="header">
+          <div className="logo">
+            <div className="logo-mark" />
+            <span className="logo-text">BookTime</span>
+          </div>
+        </header>
+
+        <main className="auth-panel" aria-label="Account access">
+          <div className="auth-copy">
+            <h1>Use your reading ID</h1>
+            <p>Create an ID once, then enter it on any device to open the same library.</p>
+          </div>
+
+          <form className="auth-form" onSubmit={signIn}>
+            <label className="auth-label" htmlFor="account-identifier">
+              Account ID
+            </label>
+            <input
+              id="account-identifier"
+              className="auth-input"
+              type="text"
+              value={identifierInput}
+              onChange={(event) => setIdentifierInput(event.target.value)}
+              placeholder="BT-XXXX-XXXX-XXXX"
+              autoCapitalize="characters"
+              autoComplete="off"
+              disabled={authBusy || auth.status === "checking"}
+            />
+
+            {authError ? <p className="auth-error">{authError}</p> : null}
+
+            <div className="auth-actions">
+              <button className="btn-primary" type="submit" disabled={authBusy || auth.status === "checking"}>
+                Sign in
+              </button>
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={registerAccount}
+                disabled={authBusy || auth.status === "checking"}
+              >
+                Create account
+              </button>
+            </div>
+          </form>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <header className="header">
@@ -389,10 +602,15 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
           <div className="logo-mark" />
           <span className="logo-text">BookTime</span>
         </div>
-        <button className="btn-add" type="button" onClick={addBookFromPrompt}>
-          {plusIcon()}
-          Add book
-        </button>
+        <div className="header-actions">
+          <button className="account-chip" type="button" onClick={copyIdentifier} title="Copy account ID">
+            {accountIdentifier}
+          </button>
+          <button className="btn-add" type="button" onClick={addBookFromPrompt}>
+            {plusIcon()}
+            Add book
+          </button>
+        </div>
       </header>
 
       <section className="stats-row" aria-label="Reading summary">

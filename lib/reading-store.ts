@@ -1,11 +1,13 @@
 import "server-only";
 
 import { ObjectId, type Db } from "mongodb";
+import { ensureAccountIndexes, requireAccount } from "@/lib/accounts";
 import { getMongoClient } from "@/lib/mongodb";
 import type { ActiveSessionView, BookStatus, BookView, DashboardView } from "@/lib/types";
 
 type BookDoc = {
   _id: ObjectId;
+  accountId: ObjectId;
   title: string;
   author: string;
   coverClass: string;
@@ -19,6 +21,7 @@ type BookDoc = {
 
 type SessionDoc = {
   _id: ObjectId;
+  accountId: ObjectId;
   bookId: ObjectId;
   startedAt: Date;
   endedAt: Date | null;
@@ -36,11 +39,12 @@ async function getDb(): Promise<Db> {
 
 async function ensureIndexes(db: Db) {
   await Promise.all([
-    db.collection("books").createIndex({ createdAt: 1 }),
-    db.collection("reading_sessions").createIndex({ endedAt: 1 }),
-    db.collection("reading_sessions").createIndex({ bookId: 1, endedAt: 1 }),
-    db.collection("reading_sessions").createIndex({ startEventId: 1 }, { unique: true }),
-    db.collection("reading_sessions").createIndex({ stopEventId: 1 }, { sparse: true }),
+    ensureAccountIndexes(db),
+    db.collection("books").createIndex({ accountId: 1, createdAt: 1 }),
+    db.collection("reading_sessions").createIndex({ accountId: 1, endedAt: 1 }),
+    db.collection("reading_sessions").createIndex({ accountId: 1, bookId: 1, endedAt: 1 }),
+    db.collection("reading_sessions").createIndex({ accountId: 1, startEventId: 1 }, { unique: true }),
+    db.collection("reading_sessions").createIndex({ accountId: 1, stopEventId: 1 }, { sparse: true }),
   ]);
 }
 
@@ -113,18 +117,22 @@ function toActiveView(session: SessionDoc | null): ActiveSessionView | null {
   };
 }
 
-export async function getDashboard(): Promise<DashboardView> {
+export async function getDashboard(accountIdentifier: string): Promise<DashboardView> {
   const db = await getDb();
   await prepareDatabase(db);
 
+  const account = await requireAccount(accountIdentifier);
   const now = new Date();
   const weekStart = startOfWeek(now);
   const [books, activeSession, weekSessions] = await Promise.all([
-    db.collection<BookDoc>("books").find({}).sort({ createdAt: 1 }).toArray(),
-    db.collection<SessionDoc>("reading_sessions").findOne({ endedAt: null }, { sort: { startedAt: -1 } }),
+    db.collection<BookDoc>("books").find({ accountId: account._id }).sort({ createdAt: 1 }).toArray(),
+    db
+      .collection<SessionDoc>("reading_sessions")
+      .findOne({ accountId: account._id, endedAt: null }, { sort: { startedAt: -1 } }),
     db
       .collection<SessionDoc>("reading_sessions")
       .find({
+        accountId: account._id,
         startedAt: { $lte: now },
         $or: [{ endedAt: null }, { endedAt: { $gte: weekStart } }],
       })
@@ -146,6 +154,7 @@ export async function getDashboard(): Promise<DashboardView> {
 }
 
 export async function startReading(input: {
+  accountIdentifier: string;
   bookId: string;
   startedAt: string;
   eventId: string;
@@ -153,6 +162,7 @@ export async function startReading(input: {
   const db = await getDb();
   await prepareDatabase(db);
 
+  const account = await requireAccount(input.accountIdentifier);
   const bookId = asObjectId(input.bookId);
   const startedAt = new Date(input.startedAt);
 
@@ -161,14 +171,15 @@ export async function startReading(input: {
   }
 
   const existing = await db.collection<SessionDoc>("reading_sessions").findOne({
+    accountId: account._id,
     startEventId: input.eventId,
   });
 
   if (existing) {
-    return getDashboard();
+    return getDashboard(input.accountIdentifier);
   }
 
-  const book = await db.collection<BookDoc>("books").findOne({ _id: bookId });
+  const book = await db.collection<BookDoc>("books").findOne({ _id: bookId, accountId: account._id });
   if (!book) {
     throw new Error("Book was not found.");
   }
@@ -176,20 +187,20 @@ export async function startReading(input: {
   const now = new Date();
   const activeSessions = await db
     .collection<SessionDoc>("reading_sessions")
-    .find({ endedAt: null })
+    .find({ accountId: account._id, endedAt: null })
     .toArray();
 
   for (const session of activeSessions) {
     const endedAt = startedAt > session.startedAt ? startedAt : now;
     const durationSeconds = secondsBetween(session.startedAt, endedAt);
     await db.collection<SessionDoc>("reading_sessions").updateOne(
-      { _id: session._id, endedAt: null },
+      { _id: session._id, accountId: account._id, endedAt: null },
       {
         $set: { endedAt, durationSeconds, updatedAt: now },
       },
     );
     await db.collection<BookDoc>("books").updateOne(
-      { _id: session.bookId },
+      { _id: session.bookId, accountId: account._id },
       {
         $inc: { totalSeconds: durationSeconds, sessionsCount: 1 },
         $set: { updatedAt: now },
@@ -200,6 +211,7 @@ export async function startReading(input: {
   try {
     await db.collection<SessionDoc>("reading_sessions").insertOne({
       _id: new ObjectId(),
+      accountId: account._id,
       bookId,
       startedAt,
       endedAt: null,
@@ -216,15 +228,16 @@ export async function startReading(input: {
       "code" in error &&
       error.code === duplicateKeyCode
     ) {
-      return getDashboard();
+      return getDashboard(input.accountIdentifier);
     }
     throw error;
   }
 
-  return getDashboard();
+  return getDashboard(input.accountIdentifier);
 }
 
 export async function stopReading(input: {
+  accountIdentifier: string;
   bookId: string;
   stoppedAt: string;
   eventId: string;
@@ -232,6 +245,7 @@ export async function stopReading(input: {
   const db = await getDb();
   await prepareDatabase(db);
 
+  const account = await requireAccount(input.accountIdentifier);
   const bookId = asObjectId(input.bookId);
   const stoppedAt = new Date(input.stoppedAt);
 
@@ -240,15 +254,17 @@ export async function stopReading(input: {
   }
 
   const existingStop = await db.collection<SessionDoc>("reading_sessions").findOne({
+    accountId: account._id,
     stopEventId: input.eventId,
   });
 
   if (existingStop) {
-    return getDashboard();
+    return getDashboard(input.accountIdentifier);
   }
 
   const activeSession = await db.collection<SessionDoc>("reading_sessions").findOne(
     {
+      accountId: account._id,
       bookId,
       endedAt: null,
     },
@@ -256,7 +272,7 @@ export async function stopReading(input: {
   );
 
   if (!activeSession) {
-    return getDashboard();
+    return getDashboard(input.accountIdentifier);
   }
 
   const now = new Date();
@@ -264,7 +280,7 @@ export async function stopReading(input: {
   const durationSeconds = secondsBetween(activeSession.startedAt, endedAt);
 
   await db.collection<SessionDoc>("reading_sessions").updateOne(
-    { _id: activeSession._id, endedAt: null },
+    { _id: activeSession._id, accountId: account._id, endedAt: null },
     {
       $set: {
         endedAt,
@@ -276,23 +292,25 @@ export async function stopReading(input: {
   );
 
   await db.collection<BookDoc>("books").updateOne(
-    { _id: activeSession.bookId },
+    { _id: activeSession.bookId, accountId: account._id },
     {
       $inc: { totalSeconds: durationSeconds, sessionsCount: 1 },
       $set: { updatedAt: now },
     },
   );
 
-  return getDashboard();
+  return getDashboard(input.accountIdentifier);
 }
 
 export async function addBook(input: {
+  accountIdentifier: string;
   title: string;
   author: string;
 }): Promise<DashboardView> {
   const db = await getDb();
   await prepareDatabase(db);
 
+  const account = await requireAccount(input.accountIdentifier);
   const title = input.title.trim();
   const author = input.author.trim();
 
@@ -301,10 +319,11 @@ export async function addBook(input: {
   }
 
   const now = new Date();
-  const coverClass = `cover-${(await db.collection<BookDoc>("books").countDocuments()) % 4 + 1}`;
+  const coverClass = `cover-${(await db.collection<BookDoc>("books").countDocuments({ accountId: account._id })) % 4 + 1}`;
 
   await db.collection<BookDoc>("books").insertOne({
     _id: new ObjectId(),
+    accountId: account._id,
     title,
     author,
     coverClass,
@@ -316,5 +335,5 @@ export async function addBook(input: {
     updatedAt: now,
   });
 
-  return getDashboard();
+  return getDashboard(input.accountIdentifier);
 }
