@@ -30,6 +30,7 @@ export type ReadingSessionView = {
 export type DashboardView = {
   books: BookView[];
   activeSession: ActiveSessionView | null;
+  totalTodaySeconds: number;
   totalThisWeekSeconds: number;
   booksInProgress: number;
   serverNow: string;

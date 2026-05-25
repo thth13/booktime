@@ -92,6 +92,12 @@ function startOfWeek(date: Date): Date {
   return start;
 }
 
+function startOfDay(date: Date): Date {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
 function sessionOverlapSeconds(session: SessionDoc, from: Date, to: Date): number {
   const end = session.endedAt ?? to;
   const overlapStart = new Date(Math.max(session.startedAt.getTime(), from.getTime()));
@@ -167,6 +173,7 @@ export async function getDashboard(accountIdentifier: string): Promise<Dashboard
 
   const account = await requireAccount(accountIdentifier);
   const now = new Date();
+  const dayStart = startOfDay(now);
   const weekStart = startOfWeek(now);
   const [books, activeSession, weekSessions] = await Promise.all([
     db.collection<BookDoc>("books").find({ accountId: account._id }).sort({ createdAt: 1 }).toArray(),
@@ -187,10 +194,15 @@ export async function getDashboard(accountIdentifier: string): Promise<Dashboard
     (sum, session) => sum + sessionOverlapSeconds(session, weekStart, now),
     0,
   );
+  const totalTodaySeconds = weekSessions.reduce(
+    (sum, session) => sum + sessionOverlapSeconds(session, dayStart, now),
+    0,
+  );
 
   return {
     books: books.map((book) => toBookView(book, activeSession, now)),
     activeSession: toActiveView(activeSession),
+    totalTodaySeconds,
     totalThisWeekSeconds,
     booksInProgress: books.filter((book) => book.status === "reading").length,
     serverNow: now.toISOString(),

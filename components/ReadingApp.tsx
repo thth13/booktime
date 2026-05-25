@@ -547,6 +547,27 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
     return dashboard.totalThisWeekSeconds + secondsBetween(activeSession.startedAt, now);
   }, [activeSession, dashboard, now]);
 
+  const displayedTodaySeconds = useMemo(() => {
+    if (!dashboard) {
+      return 0;
+    }
+
+    if (!activeSession) {
+      return dashboard.totalTodaySeconds;
+    }
+
+    const serverActiveSession = dashboard.activeSession;
+    const isSameServerSession =
+      serverActiveSession?.bookId === activeSession.bookId &&
+      serverActiveSession.startedAt === activeSession.startedAt;
+
+    if (isSameServerSession) {
+      return dashboard.totalTodaySeconds + secondsBetween(dashboard.serverNow, now);
+    }
+
+    return dashboard.totalTodaySeconds + secondsBetween(activeSession.startedAt, now);
+  }, [activeSession, dashboard, now]);
+
   const books = useMemo(() => {
     if (!dashboard) {
       return [];
@@ -1141,6 +1162,11 @@ export default function ReadingApp({ initialDashboard }: { initialDashboard: Das
       ) : null}
 
       <section className="stats-row" aria-label="Reading summary">
+        <div className="stat-item stat-time">
+          <span className="stat-kicker">Total today</span>
+          <span className="stat-value">{formatShortTime(displayedTodaySeconds)}</span>
+          <span className="stat-label">reading time</span>
+        </div>
         <div className="stat-item stat-time">
           <span className="stat-kicker">Total this week</span>
           <span className="stat-value">{formatShortTime(displayedWeekSeconds)}</span>
