@@ -108,23 +108,6 @@ function formatMonthTitle(date: Date): string {
   return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(date);
 }
 
-function formatHourNumber(seconds: number): string {
-  const hours = seconds / 3600;
-
-  if (hours === 0) {
-    return "0";
-  }
-
-  if (hours < 10) {
-    return new Intl.NumberFormat(undefined, {
-      maximumFractionDigits: 1,
-      minimumFractionDigits: hours < 1 ? 1 : 0,
-    }).format(hours);
-  }
-
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(hours);
-}
-
 function formatShortTime(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -134,6 +117,13 @@ function formatShortTime(totalSeconds: number): string {
   }
 
   return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+}
+
+function formatCalendarTime(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+  return `${hours}:${minutes.toString().padStart(2, "0")}`;
 }
 
 function aggregateByDay(sessions: ReadingSessionView[], serverNow: string, from: Date, to: Date) {
@@ -326,8 +316,8 @@ export default function ReadingStatisticsPage() {
                     key={cell.key}
                   >
                     <span className="day-number">{cell.date.getDate()}</span>
-                    <span className="day-hours">{formatHourNumber(seconds)}</span>
-                    <span className="day-hours-label">hours</span>
+                    <span className="day-hours">{formatCalendarTime(seconds)}</span>
+                    <span className="day-hours-label">time</span>
                   </div>
                 );
               })}
